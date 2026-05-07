@@ -1,0 +1,8 @@
+# Tested with Python 3.11
+# Run: pip install -r requirements.txt
+# Then run: pip freeze > requirements-locked.txt to record exact versions
+litellm
+openai
+pandas
+matplotlib
+python-dotenv
