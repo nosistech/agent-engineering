@@ -1,0 +1,18 @@
+[
+    {
+      "name": "Alice Chen",
+      "update": "Finished the LiteLLM proxy configuration for Project Sentinel. Working on the API gateway rate limiting module. Blocked by the infrastructure team needing to approve a network rule before testing can continue."
+    },
+    {
+      "name": "Bob Martinez",
+      "update": "Deployed the new monitoring dashboard to the NosisTech staging environment. Now adding alerting rules for CPU threshold spikes. No blockers at this time."
+    },
+    {
+      "name": "Clara Williams",
+      "update": "Completed the P0 security patch review for the client portal. Currently fixing an input validation issue in the reporting module. Blocker: waiting on legal to approve the penetration test scope document."
+    },
+    {
+      "name": "David Nguyen",
+      "update": "Set up the CI/CD pipeline for Project Chimera. Now writing integration tests for the data ingestion layer. No blockers."
+    }
+  ]
