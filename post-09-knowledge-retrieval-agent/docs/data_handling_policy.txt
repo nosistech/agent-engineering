@@ -1,0 +1,26 @@
+Meridian Advisory Group -- Data Handling and Retention Policy
+
+Version: 2.1
+Effective Date: March 2026
+
+Section 1: Data Classification
+
+All data handled by Meridian Advisory Group is classified into three tiers. Tier 1 is Public data, which includes marketing materials and published reports. Tier 2 is Internal data, which includes operational documents and project records. Tier 3 is Confidential data, which includes client deliverables, personal information, and financial records.
+
+Tier 3 data is stored exclusively on encrypted storage systems. Access to Tier 3 data is restricted to staff members with a documented business need. Access logs are maintained for all Tier 3 data access events.
+
+Section 2: Retention Schedule
+
+Public data is retained indefinitely. Internal operational data is retained for 5 years from the date of creation. Client project data is retained for 7 years from the date of engagement closure. Personal data collected during the sales process is deleted within 90 days if no engagement follows.
+
+Section 3: Data Subject Rights
+
+Individuals may request access to their personal data held by Meridian Advisory Group at any time. Access requests are fulfilled within 30 calendar days. Individuals may also request correction or deletion of their personal data. Deletion requests are processed within 15 business days subject to legal retention obligations.
+
+Section 4: Incident Response
+
+Any confirmed or suspected data breach must be reported to the Data Protection Officer within 24 hours of discovery. The Data Protection Officer is responsible for assessing the scope of the breach, notifying affected individuals, and filing regulatory reports where required by applicable law. All breach events are logged and reviewed in a quarterly security audit.
+
+Section 5: Third Party Processors
+
+Meridian Advisory Group uses a limited number of third party service providers to process data on its behalf. All third party processors are bound by data processing agreements that meet or exceed the obligations in this policy. A current list of approved processors is maintained internally and reviewed annually.
