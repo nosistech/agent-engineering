@@ -1,0 +1,6 @@
+# Tested with Python 3.14
+litellm==1.83.7
+pytesseract==0.3.13
+Pillow==12.2.0
+pdf2image==1.17.0
+python-dotenv==1.0.1
