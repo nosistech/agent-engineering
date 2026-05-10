@@ -1,0 +1,5 @@
+﻿NosisTech LLC provides AI governance consulting services. This includes AI risk assessments, responsible AI policy drafting, and compliance audits for EU AI Act and NIST AI RMF.
+
+Our cloud security practice helps organizations secure their multi-cloud environments on AWS, Azure, and GCP. We perform configuration reviews, penetration testing, and implement zero-trust architectures.
+
+Additionally, NosisTech offers executive workshops on AI strategy, board-level AI risk awareness, and AI ethics framework development.
