@@ -1,0 +1,26 @@
+# NosisTech LLC office zone configuration
+# Adjust target temperatures, CO2 limits, and occupancy to match your building
+
+Conference Room A:
+  target_temp_min: 21
+  target_temp_max: 24
+  co2_limit_warning: 1000
+  co2_limit_critical: 1500
+  max_occupancy: 20
+  deadband_degrees: 0.5
+
+Server Room:
+  target_temp_min: 18
+  target_temp_max: 22
+  co2_limit_warning: 800
+  co2_limit_critical: 1200
+  max_occupancy: 2
+  deadband_degrees: 0.3
+
+Open Office:
+  target_temp_min: 22
+  target_temp_max: 25
+  co2_limit_warning: 1200
+  co2_limit_critical: 2000
+  max_occupancy: 50
+  deadband_degrees: 1.0
