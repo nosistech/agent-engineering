@@ -5,10 +5,8 @@ import json
 import time
 from typing import Any, Dict, List
 
+import openai
 from dotenv import load_dotenv
-
-import litellm
-from litellm.exceptions import RateLimitError, APIConnectionError
 
 load_dotenv()
 
@@ -41,7 +39,12 @@ def call_llm(
     temperature: float = 0.7,
     max_tokens: int = 2048,
 ) -> str:
-    """Send a completion to the LiteLLM proxy, with exponential backoff on rate limits."""
+    """Send a completion to the configured endpoint, with exponential backoff on rate limits."""
+    client = openai.OpenAI(
+        base_url=os.getenv("LITELLM_BASE_URL"),
+        api_key=os.getenv("LITELLM_API_KEY"),
+        timeout=120.0,
+    )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
@@ -49,11 +52,9 @@ def call_llm(
     attempt = 0
     while True:
         try:
-            response = litellm.completion(
-                model="openai/" + os.getenv("MODEL_NAME"),
+            response = client.chat.completions.create(
+                model=os.getenv("MODEL_NAME"),
                 messages=messages,
-                api_base=os.getenv("LITELLM_BASE_URL"),
-                api_key=os.getenv("LITELLM_API_KEY"),
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=120,
@@ -63,7 +64,7 @@ def call_llm(
             if "rate limit" in str(e).lower():
                 attempt += 1
                 if attempt >= 3:
-                    raise RuntimeError("Rate limit exceeded after 3 retries.") from e
+                    raise RuntimeError("Rate limit exceeded after 3 retries. Please wait and try again.") from e
                 wait = 2**attempt
                 print(f"Rate limit hit. Retrying in {wait}s (attempt {attempt}/3)...")
                 time.sleep(wait)
@@ -150,8 +151,9 @@ def editor(draft: str, forbidden_words: List[str], brand_tone: str) -> Dict[str,
         return {
             "passed": False,
             "score": 0,
-            "reason": f"Parse error: {raw[:100] if 'raw' in dir() else str(ex)}",
+            "reason": f"Parse error: {str(ex)[:80]}",
         }
+
 
 def run_campaign() -> None:
     """Orchestrate the full marketing pipeline for email, blog, and ad."""
@@ -208,9 +210,9 @@ def run_campaign() -> None:
 if __name__ == "__main__":
     try:
         run_campaign()
-    except (ConnectionError, APIConnectionError):
+    except ConnectionError:
         print(
-            "Cannot reach LiteLLM proxy. Verify the SSH tunnel is active and LITELLM_BASE_URL is correct."
+            "Cannot reach the configured endpoint. Verify LITELLM_BASE_URL is correct and accessible."
         )
         sys.exit(1)
     except Exception as exc:
