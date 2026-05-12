@@ -13,34 +13,40 @@ API_BASE = os.getenv("API_BASE", "http://127.0.0.1:4000")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
-DEMO_PATIENT = {
-    "patient_id": "P-DEMO",
-    "heart_rate_avg": 102.0,
-    "spo2_min": 91.5,
-    "wbc_count": 14.2,
-    "temperature": 38.9,
-    "chest_imaging": "right_lower_consolidation",
-    "symptoms": ["productive cough", "fever", "shortness of breath"],
+DEMO_APPLICATION = {
+    "application_id": "APP-DEMO",
+    "revenue_growth": 18.5,
+    "debt_ratio": 0.72,
+    "months_in_business": 14.0,
+    "credit_score": 610.0,
 }
 
-FEATURE_NAMES = ["heart_rate_avg", "spo2_min", "wbc_count", "temperature"]
+FEATURE_NAMES = ["revenue_growth", "debt_ratio", "months_in_business", "credit_score"]
 
 
 def _generate_training_data():
     np.random.seed(42)
     n = 20
-    heart_rate = np.random.normal(80, 15, n)
-    spo2 = np.random.normal(97, 2, n)
-    wbc = np.random.normal(8, 2.5, n)
-    temperature = np.random.normal(36.8, 0.5, n)
-    X = np.column_stack([heart_rate, spo2, wbc, temperature])
+    revenue_growth = np.random.normal(15, 10, n)
+    debt_ratio = np.random.normal(0.5, 0.2, n)
+    months_in_business = np.random.normal(24, 12, n)
+    credit_score = np.random.normal(680, 60, n)
+
+    X = np.column_stack([revenue_growth, debt_ratio, months_in_business, credit_score])
+
+    strong_growth = revenue_growth > 20
+    low_debt = debt_ratio < 0.4
+    established = months_in_business > 18
+    good_credit = credit_score > 650
+
     y = (
-        (heart_rate > 100).astype(int)
-        + (spo2 < 93).astype(int)
-        + (wbc > 11).astype(int)
-        + (temperature > 37.8).astype(int)
-        >= 1
+        strong_growth.astype(int)
+        + low_debt.astype(int)
+        + established.astype(int)
+        + good_credit.astype(int)
+        >= 2
     ).astype(int)
+
     return X, y
 
 
@@ -61,48 +67,52 @@ class ExplainableAgent:
     def get_training_mean(self):
         return self.training_mean
 
-    def make_decision(self, patient: dict) -> dict:
+    def make_decision(self, application: dict) -> dict:
         self.reasoning_trace = []
 
-        features = np.array([[patient[fn] for fn in FEATURE_NAMES]])
+        features = np.array([[application[fn] for fn in FEATURE_NAMES]])
 
-        outside = []
-        if patient["heart_rate_avg"] > 100:
-            outside.append("heart_rate_avg > 100")
-        if patient["spo2_min"] < 95:
-            outside.append("spo2_min < 95")
-        if patient["wbc_count"] > 11:
-            outside.append("wbc_count > 11")
-        if patient["temperature"] > 37.5:
-            outside.append("temperature > 37.5")
+        flags = []
+        if application["revenue_growth"] < 10:
+            flags.append("revenue_growth below threshold")
+        if application["debt_ratio"] > 0.6:
+            flags.append("debt_ratio above threshold")
+        if application["months_in_business"] < 18:
+            flags.append("months_in_business below threshold")
+        if application["credit_score"] < 650:
+            flags.append("credit_score below threshold")
+
         step1 = f"Feature count: {len(FEATURE_NAMES)}"
-        if outside:
-            step1 += f", outside normal range: {', '.join(outside)}"
+        if flags:
+            step1 += f", risk flags: {', '.join(flags)}"
         self.reasoning_trace.append({"stage": "Input Analysis", "data": step1})
 
         proba = self.model.predict_proba(features)[0]
-        p_pneumonia = proba[1]
-        decision = "pneumonia" if p_pneumonia >= 0.5 else "healthy"
+        p_approve = proba[1]
+        decision = "approve" if p_approve >= 0.5 else "decline"
         confidence = float(max(proba))
         self.reasoning_trace.append({
             "stage": "Model Inference",
-            "data": f"Raw probability of pneumonia: {p_pneumonia:.4f}",
+            "data": f"Approval probability: {p_approve:.4f}",
         })
 
         if confidence >= 0.75:
             conf_msg = "High confidence"
         elif confidence >= 0.5:
-            conf_msg = "Moderate confidence, review recommended"
+            conf_msg = "Moderate confidence, analyst review recommended"
         else:
-            conf_msg = "Low confidence, escalate to human"
+            conf_msg = "Low confidence, escalate to senior analyst"
         self.reasoning_trace.append({"stage": "Confidence Assessment", "data": conf_msg})
 
-        self.reasoning_trace.append({"stage": "Decision Synthesis", "data": f"Final decision: {decision}"})
+        self.reasoning_trace.append({
+            "stage": "Decision Synthesis",
+            "data": f"Final decision: {decision}",
+        })
 
         return {
             "decision": decision,
             "confidence": confidence,
-            "raw_features": {fn: patient[fn] for fn in FEATURE_NAMES},
+            "raw_features": {fn: application[fn] for fn in FEATURE_NAMES},
             "reasoning_trace": self.reasoning_trace,
         }
 
@@ -138,15 +148,15 @@ class LIMEExplainer:
 
 
 def generate_counterfactual(model, features_array: np.ndarray, feature_names: list,
-                            target_class: int = 0) -> dict:
+                            target_class: int = 1) -> dict:
     x = features_array.copy()
     original_pred = model.predict(x)[0]
     if original_pred == target_class:
-        return {"changes_required": {}, "feasibility": "Achievable"}
+        return {"changes_required": {}, "feasibility": "Already qualifies"}
 
     changes = {}
     for i, name in enumerate(feature_names):
-        for direction in [0.9, 1.1]:
+        for direction in [1.1, 0.9]:
             candidate = x.copy()
             new_val = candidate[0, i] * direction
             candidate[0, i] = new_val
@@ -163,9 +173,9 @@ class ConfidenceAwareAgent:
         if confidence >= 0.75:
             return {"level": "High", "action": "Proceed", "threshold_used": 0.75}
         elif confidence >= 0.5:
-            return {"level": "Moderate", "action": "Flag for review", "threshold_used": 0.5}
+            return {"level": "Moderate", "action": "Flag for analyst review", "threshold_used": 0.5}
         else:
-            return {"level": "Low", "action": "Escalate to human", "threshold_used": 0.5}
+            return {"level": "Low", "action": "Escalate to senior analyst", "threshold_used": 0.5}
 
 
 def call_llm(prompt: str) -> str:
@@ -178,39 +188,41 @@ def call_llm(prompt: str) -> str:
     return response.choices[0].message.content
 
 
-class DiagnosticAssistant:
+class LoanExplainer:
     def __init__(self):
         self.agent = ExplainableAgent()
         self.shap = SHAPExplainer()
         self.lime = LIMEExplainer()
         self.confidence_agent = ConfidenceAwareAgent()
 
-    def diagnose(self, patient: dict, audience: str = "clinician") -> dict:
-        decision_result = self.agent.make_decision(patient)
-        features = np.array([[patient[fn] for fn in FEATURE_NAMES]])
+    def evaluate(self, application: dict, audience: str = "analyst") -> dict:
+        decision_result = self.agent.make_decision(application)
+        features = np.array([[application[fn] for fn in FEATURE_NAMES]])
 
         shap_values = self.shap.explain(
             self.agent.model, features, FEATURE_NAMES,
             baseline_means=self.agent.get_training_mean(),
         )
         lime_values = self.lime.explain(self.agent.model, features, FEATURE_NAMES)
-        counterfactual = generate_counterfactual(self.agent.model, features, FEATURE_NAMES, target_class=0)
+        counterfactual = generate_counterfactual(
+            self.agent.model, features, FEATURE_NAMES, target_class=1
+        )
         confidence_assessment = self.confidence_agent.assess(decision_result["confidence"])
 
-        prompt = f"""You are a medical AI assistant. Generate a {audience} explanation for this diagnostic result.
+        prompt = f"""You are a loan application summarization assistant. Summarize this application assessment for a {audience}.
 
-Patient: {patient['patient_id']}
+Application ID: {application['application_id']}
 Decision: {decision_result['decision']}
 Confidence: {decision_result['confidence']:.2f}
 SHAP Feature Attributions: {shap_values}
 LIME Weights: {lime_values}
-Counterfactual: {counterfactual}
+Counterfactual (what would need to change to qualify): {counterfactual}
 Confidence Assessment: {confidence_assessment}
 
-For a clinician: include SHAP values, confidence score, and differential reasoning. Use clinical terminology.
-For a patient: use plain language only. No numeric scores. Emphasize next steps with their doctor.
+For an analyst: include the SHAP attributions, confidence score, and which risk flags were triggered. Use professional language.
+For an applicant: use plain language only. No numeric scores. Explain the outcome and what they could work on improving. Be respectful and constructive.
 
-Keep the explanation under 150 words."""
+Important: this is a data summary only. Do not present this as a final lending decision or financial advice. Keep the summary under 150 words."""
 
         explanation = call_llm(prompt)
 
@@ -227,20 +239,20 @@ Keep the explanation under 150 words."""
 
 
 if __name__ == "__main__":
-    assistant = DiagnosticAssistant()
+    explainer = LoanExplainer()
 
-    print("\n=== CLINICIAN REPORT ===")
-    clinician_report = assistant.diagnose(DEMO_PATIENT, audience="clinician")
-    print(f"Decision: {clinician_report['decision']}")
-    print(f"Confidence: {clinician_report['confidence']:.2f}")
-    print(f"SHAP Attributions: {clinician_report['shap_values']}")
-    print(f"Counterfactual: {clinician_report['counterfactual']}")
-    print(f"Explanation:\n{clinician_report['explanation']}")
+    print("\n=== ANALYST REPORT ===")
+    analyst_report = explainer.evaluate(DEMO_APPLICATION, audience="analyst")
+    print(f"Decision: {analyst_report['decision']}")
+    print(f"Confidence: {analyst_report['confidence']:.2f}")
+    print(f"SHAP Attributions: {analyst_report['shap_values']}")
+    print(f"Counterfactual: {analyst_report['counterfactual']}")
+    print(f"Explanation:\n{analyst_report['explanation']}")
 
-    print("\n=== PATIENT REPORT ===")
-    patient_report = assistant.diagnose(DEMO_PATIENT, audience="patient")
-    print(f"Explanation:\n{patient_report['explanation']}")
+    print("\n=== APPLICANT REPORT ===")
+    applicant_report = explainer.evaluate(DEMO_APPLICATION, audience="applicant")
+    print(f"Explanation:\n{applicant_report['explanation']}")
 
     print("\n=== REASONING TRACE ===")
-    for step in clinician_report["reasoning_trace"]:
+    for step in analyst_report["reasoning_trace"]:
         print(f"  {step['stage']}: {step['data']}")
