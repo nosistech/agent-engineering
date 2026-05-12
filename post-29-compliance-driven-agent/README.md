@@ -31,7 +31,7 @@ Change `MODEL_NAME` in `.env` to another model route configured in your LiteLLM 
 ## 5. What NosisTech changed from the original
 
 - Replaced LangGraph orchestration with a plain Python loop and ordinary functions.
-- Replaced LangChain model wrappers with direct calls to `litellm.completion`.
+- Replaced LangChain model wrappers with direct HTTP calls to the LiteLLM proxy.
 - Removed hardcoded model identifiers, URLs, and policy strings from the code.
 - Moved compliance rules to `rules.yaml` for transparent review.
 - Added environment validation, input validation, rate-limit handling, and graceful failure messages.

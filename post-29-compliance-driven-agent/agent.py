@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
@@ -16,26 +15,11 @@ from dotenv import load_dotenv
 REQUIRED_ENV_VARS = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY"]
 RULES_FILE = Path(__file__).with_name("rules.yaml")
 MAX_REQUIREMENT_LENGTH = 2500
-MAX_DEVELOPER_ATTEMPTS = 3
-
-
-@dataclass
-class EngineeringState:
-    """Store the workflow state shared by each agent stage."""
-
-    requirement: str = ""
-    plan: str = ""
-    tests: str = ""
-    code: str = ""
-    compliance_findings: list[dict] = field(default_factory=list)
-    attempts: int = 0
-    syntax_error: str = ""
-    final_report: str = ""
-    self_improvement_notes: list[str] = field(default_factory=list)
+MAX_ATTEMPTS = 3
 
 
 def load_environment() -> dict:
-    """Load .env and validate required LiteLLM variables."""
+    """Load .env and validate required LiteLLM proxy settings."""
     load_dotenv()
     missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
     if missing:
@@ -50,14 +34,11 @@ def load_environment() -> dict:
     }
 
 
-def call_model(prompt: str, config: dict, system_prompt: str = "") -> str:
-    """Send a prompt to the configured model through LiteLLM."""
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
+def call_model(prompt: str, config: dict) -> str:
+    """Send one prompt to the configured model through the LiteLLM proxy."""
+    payload = {"model": config["model"], "messages": [{"role": "user", "content": prompt}]}
 
-    for attempt in range(MAX_DEVELOPER_ATTEMPTS):
+    for attempt in range(MAX_ATTEMPTS):
         try:
             response = requests.post(
                 f"{config['base_url'].rstrip('/')}/v1/chat/completions",
@@ -65,7 +46,7 @@ def call_model(prompt: str, config: dict, system_prompt: str = "") -> str:
                     "Authorization": f"Bearer {config['api_key']}",
                     "Content-Type": "application/json",
                 },
-                json={"model": config["model"], "messages": messages},
+                json=payload,
                 timeout=120,
             )
             if response.status_code == 429:
@@ -74,16 +55,12 @@ def call_model(prompt: str, config: dict, system_prompt: str = "") -> str:
                 raise RuntimeError("model request failed")
             return response.json()["choices"][0]["message"]["content"].strip()
         except Exception as error:
-            message = str(error).lower()
-            is_rate_limit = "rate limit" in message or "429" in message
-            if is_rate_limit and attempt < MAX_DEVELOPER_ATTEMPTS - 1:
+            is_rate_limit = "rate limit" in str(error).lower() or "429" in str(error)
+            if is_rate_limit and attempt < MAX_ATTEMPTS - 1:
                 wait_seconds = 2 ** attempt
                 print(f"Rate limit reached. Retrying in {wait_seconds} seconds.")
                 time.sleep(wait_seconds)
                 continue
-            if is_rate_limit:
-                print("The AI model service is rate limiting requests. Please try again later.")
-                sys.exit(1)
 
             print("The AI model service is unavailable. Check the LiteLLM settings and try again.")
             sys.exit(1)
@@ -93,10 +70,10 @@ def call_model(prompt: str, config: dict, system_prompt: str = "") -> str:
 
 
 def validate_requirement(requirement: str) -> str:
-    """Validate the software requirement before any model call."""
+    """Validate the software request before any model call."""
     cleaned = requirement.strip()
     if not cleaned:
-        print("Requirement is empty. Please provide a plain-English software requirement.")
+        print("Requirement is empty. Please provide a plain-English software request.")
         sys.exit(1)
     if len(cleaned) > MAX_REQUIREMENT_LENGTH:
         print(f"Requirement is too long. Maximum length is {MAX_REQUIREMENT_LENGTH} characters.")
@@ -105,61 +82,15 @@ def validate_requirement(requirement: str) -> str:
 
 
 def extract_code(text: str) -> str:
-    """Extract Python code from a fenced code block or return the raw text."""
+    """Extract Python code from a fenced model response."""
     match = re.search(r"```(?:python)?\s*(.*?)```", text, re.DOTALL)
     if match:
         return match.group(1).strip()
     return text.strip()
 
 
-def generate_plan(state: EngineeringState, config: dict) -> None:
-    """Generate an engineering plan from the requirement."""
-    prompt = (
-        "Create a short engineering plan for this requirement. "
-        "Include inputs, outputs, edge cases, and acceptance criteria.\n\n"
-        f"Requirement: {state.requirement}"
-    )
-    system_prompt = "You are a senior software architect. Respond with plain text only."
-    state.plan = call_model(prompt, config, system_prompt)
-
-
-def generate_tests(state: EngineeringState, config: dict) -> None:
-    """Generate pytest-style tests for the requirement."""
-    prompt = (
-        "Write a minimal pytest-style test suite for this software requirement. "
-        "Return only Python code.\n\n"
-        f"Requirement: {state.requirement}\n\nPlan:\n{state.plan}"
-    )
-    system_prompt = "You write clean, minimal test code. Do not include explanations."
-    state.tests = extract_code(call_model(prompt, config, system_prompt))
-
-
-def generate_code(state: EngineeringState, config: dict) -> str:
-    """Generate a minimal Python implementation for the tests."""
-    notes = "\n".join(state.self_improvement_notes) if state.self_improvement_notes else "None."
-    prompt = (
-        "Write the smallest Python implementation that satisfies the requirement and tests. "
-        "Return only Python code. Do not use unnecessary imports or external packages.\n\n"
-        f"Requirement:\n{state.requirement}\n\n"
-        f"Tests:\n{state.tests}\n\n"
-        f"Previous improvement notes:\n{notes}"
-    )
-    system_prompt = "You write minimal, clean Python code with no explanations."
-    return extract_code(call_model(prompt, config, system_prompt))
-
-
-def syntax_check(code: str) -> str:
-    """Return a syntax error message, or an empty string if code is valid."""
-    try:
-        ast.parse(code)
-        return ""
-    except SyntaxError as error:
-        line_number = error.lineno or "unknown"
-        return f"{error.msg} on line {line_number}"
-
-
 def load_rules() -> list[dict]:
-    """Load compliance rules from rules.yaml beside this file."""
+    """Load compliance rules from rules.yaml."""
     try:
         rules_data = yaml.safe_load(RULES_FILE.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -176,20 +107,28 @@ def load_rules() -> list[dict]:
     return rules
 
 
-def compliance_scan(code: str, rules: list[dict]) -> list[dict]:
+def check_syntax(code: str) -> str:
+    """Return a syntax error message, or an empty string if code is valid."""
+    try:
+        ast.parse(code)
+        return ""
+    except SyntaxError as error:
+        return f"{error.msg} on line {error.lineno or 'unknown'}"
+
+
+def scan_compliance(code: str, rules: list[dict]) -> list[dict]:
     """Scan generated code against compliance rules."""
     findings = []
-    lines = code.splitlines()
-    for rule in rules:
-        for pattern in rule.get("patterns", []):
-            try:
-                compiled_pattern = re.compile(pattern, re.IGNORECASE)
-            except re.error:
-                print("A compliance rule contains an invalid pattern.")
-                sys.exit(1)
+    for line_number, line in enumerate(code.splitlines(), start=1):
+        for rule in rules:
+            for pattern in rule.get("patterns", []):
+                try:
+                    matched = re.search(pattern, line, re.IGNORECASE)
+                except re.error:
+                    print("A compliance rule contains an invalid pattern.")
+                    sys.exit(1)
 
-            for line_number, line in enumerate(lines, start=1):
-                if compiled_pattern.search(line):
+                if matched:
                     findings.append(
                         {
                             "rule_id": rule["id"],
@@ -197,121 +136,120 @@ def compliance_scan(code: str, rules: list[dict]) -> list[dict]:
                             "severity": rule["severity"],
                             "action": rule["action"],
                             "line": line_number,
-                            "match": line.strip(),
                         }
                     )
     return findings
 
 
-def has_blocking_findings(findings: list[dict]) -> bool:
-    """Return whether findings require a developer rewrite."""
+def needs_rewrite(findings: list[dict]) -> bool:
+    """Return whether compliance findings require another developer attempt."""
     return any(finding["action"] in ("rewrite", "block") for finding in findings)
 
 
-def generate_integration_report(state: EngineeringState, config: dict) -> None:
-    """Generate a short release note for the reviewed code."""
+def build_plan(requirement: str, config: dict) -> str:
+    """Ask the planner model call for a short engineering plan."""
     prompt = (
-        "Write a short release note for this generated Python code. "
-        "State that this is a demo static review, not production approval, "
-        "legal advice, or security certification. Mention the syntax check "
-        "and compliance scan result.\n\n"
-        f"Requirement:\n{state.requirement}\n\nCode:\n{state.code}"
+        "Create a short engineering plan for this request. Include inputs, outputs, "
+        "edge cases, and acceptance criteria.\n\n"
+        f"Request: {requirement}"
     )
-    system_prompt = "You write concise release notes for internal engineering demos."
-    state.final_report = call_model(prompt, config, system_prompt)
+    return call_model(prompt, config)
 
 
-def add_self_improvement_notes(state: EngineeringState) -> None:
-    """Record why the developer stage needs another attempt."""
-    if state.syntax_error:
-        state.self_improvement_notes.append(
-            "Syntax failed. Generate shorter code and check Python syntax before final output."
-        )
-    if has_blocking_findings(state.compliance_findings):
-        rule_ids = [
-            finding["rule_id"]
-            for finding in state.compliance_findings
-            if finding["action"] in ("rewrite", "block")
-        ]
-        state.self_improvement_notes.append(
-            "Compliance failed. Avoid these rule patterns: " + ", ".join(rule_ids)
-        )
+def build_tests(requirement: str, plan: str, config: dict) -> str:
+    """Ask the tester model call for pytest-style tests."""
+    prompt = (
+        "Write minimal pytest-style tests for this request. Return only Python code.\n\n"
+        f"Request: {requirement}\n\nPlan:\n{plan}"
+    )
+    return extract_code(call_model(prompt, config))
 
 
-def run_workflow(requirement: str) -> EngineeringState:
-    """Run the planning, testing, development, compliance, and integration workflow."""
+def build_code(requirement: str, tests: str, feedback: str, config: dict) -> str:
+    """Ask the developer model call for a small Python implementation."""
+    prompt = (
+        "Write the smallest Python implementation that satisfies this request and tests. "
+        "Return implementation code only. Do not include tests, pytest imports, markdown, "
+        "examples, comments, or explanations. Do not use unnecessary imports or external packages.\n\n"
+        f"Request:\n{requirement}\n\nTests:\n{tests}\n\nFeedback from prior attempt:\n{feedback}"
+    )
+    return extract_code(call_model(prompt, config))
+
+
+def run_workflow(requirement: str) -> dict:
+    """Run planner, tester, developer, syntax review, and compliance review."""
     config = load_environment()
     rules = load_rules()
-    state = EngineeringState(requirement=validate_requirement(requirement))
+    clean_requirement = validate_requirement(requirement)
 
     print("Generating engineering plan.")
-    generate_plan(state, config)
+    plan = build_plan(clean_requirement, config)
+
     print("Generating test cases.")
-    generate_tests(state, config)
+    tests = build_tests(clean_requirement, plan, config)
 
-    while state.attempts < MAX_DEVELOPER_ATTEMPTS:
-        state.attempts += 1
-        print(f"Developer attempt {state.attempts}.")
+    feedback = "No prior attempt."
+    code = ""
+    syntax_error = ""
+    findings = []
+    attempts = 0
 
-        state.code = generate_code(state, config)
-        state.syntax_error = syntax_check(state.code)
-        if state.syntax_error:
-            print("Syntax issue detected. Retrying.")
-            add_self_improvement_notes(state)
+    while attempts < MAX_ATTEMPTS:
+        attempts += 1
+        print(f"Developer attempt {attempts}.")
+        code = build_code(clean_requirement, tests, feedback, config)
+
+        syntax_error = check_syntax(code)
+        if syntax_error:
+            feedback = f"Syntax failed: {syntax_error}"
             continue
 
-        state.compliance_findings = compliance_scan(state.code, rules)
-        if has_blocking_findings(state.compliance_findings):
-            print("Blocking compliance issue detected. Retrying.")
-            add_self_improvement_notes(state)
+        findings = scan_compliance(code, rules)
+        if needs_rewrite(findings):
+            rule_ids = ", ".join(finding["rule_id"] for finding in findings)
+            feedback = f"Compliance failed. Avoid these rule patterns: {rule_ids}"
             continue
 
         break
 
-    if state.code and not state.syntax_error and not has_blocking_findings(state.compliance_findings):
-        print("Generating integration report.")
-        generate_integration_report(state, config)
-    else:
-        state.final_report = "No integration report was generated because the code did not pass review."
+    return {
+        "requirement": clean_requirement,
+        "attempts": attempts,
+        "syntax_error": syntax_error,
+        "findings": findings,
+        "code": code,
+    }
 
-    return state
 
-
-def print_summary(state: EngineeringState) -> None:
+def print_summary(result: dict) -> None:
     """Print the final workflow summary without exposing configuration values."""
     print("\n=== Final Results ===")
-    print(f"Requirement: {state.requirement}")
-    print(f"Attempts: {state.attempts}")
-    print(f"Syntax valid: {not bool(state.syntax_error)}")
-    if state.syntax_error:
-        print(f"Syntax error: {state.syntax_error}")
+    print(f"Requirement: {result['requirement']}")
+    print(f"Attempts: {result['attempts']}")
+    print(f"Syntax valid: {not bool(result['syntax_error'])}")
+    if result["syntax_error"]:
+        print(f"Syntax error: {result['syntax_error']}")
 
-    print(f"Compliance findings: {len(state.compliance_findings)}")
-    for finding in state.compliance_findings:
+    print(f"Compliance findings: {len(result['findings'])}")
+    for finding in result["findings"]:
         print(
             f"  - {finding['rule_id']} on line {finding['line']}: "
             f"{finding['description']} [{finding['action']}]"
         )
 
-    if state.self_improvement_notes:
-        print("Self-improvement notes:")
-        for note in state.self_improvement_notes:
-            print(f"  - {note}")
-
-    print(f"\nFinal report: {state.final_report}")
-    if state.code:
+    if result["code"]:
         print("\nGenerated code:")
-        print(state.code)
+        print(result["code"])
 
 
 def main() -> None:
-    """Run the demo software engineering workflow."""
+    """Run the demo workflow."""
     demo_requirement = (
         "Create a Python function named factorial that takes an integer and returns its factorial. "
         "Handle invalid inputs by raising a ValueError."
     )
-    state = run_workflow(demo_requirement)
-    print_summary(state)
+    result = run_workflow(demo_requirement)
+    print_summary(result)
 
 
 if __name__ == "__main__":

@@ -43,3 +43,12 @@ rules:
       - '\bfrom\s+httpx\b'
       - 'urllib\.request'
       - 'urlopen\s*\('
+
+  - id: CODE-01
+    description: Generated code includes test code instead of implementation only.
+    severity: medium
+    action: rewrite
+    patterns:
+      - '\bimport\s+pytest\b'
+      - '\bdef\s+test_'
+      - '@pytest\.'
