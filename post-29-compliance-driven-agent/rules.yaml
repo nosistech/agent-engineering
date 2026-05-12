@@ -1,0 +1,45 @@
+rules:
+  - id: SEC-01
+    description: Generated code appears to contain a hardcoded secret.
+    severity: critical
+    action: block
+    patterns:
+      - '(api_key|password|secret|token)\s*=\s*["''][^"'']+["'']'
+
+  - id: SEC-02
+    description: Generated code appears to print or log sensitive data.
+    severity: high
+    action: rewrite
+    patterns:
+      - '(print|log\.(debug|info|warning|error))\(.*(password|api_key|secret|token|card|ssn)'
+      - '(password|api_key|secret|token|card|ssn).*(print|log\.(debug|info|warning|error))'
+
+  - id: SEC-03
+    description: Generated code appears to use weak hashing.
+    severity: high
+    action: rewrite
+    patterns:
+      - 'hashlib\.(md5|sha1)\s*\('
+      - '\b(md5|sha1)\s*\('
+
+  - id: SEC-04
+    description: Generated code appears to use unsafe shell execution.
+    severity: critical
+    action: block
+    patterns:
+      - 'os\.system\s*\('
+      - 'subprocess\.(call|Popen|run)\s*\('
+      - '\beval\s*\('
+      - '\bexec\s*\('
+
+  - id: SEC-05
+    description: Generated code appears to make an external network call.
+    severity: medium
+    action: review
+    patterns:
+      - '\bimport\s+requests\b'
+      - '\bfrom\s+requests\b'
+      - '\bimport\s+httpx\b'
+      - '\bfrom\s+httpx\b'
+      - 'urllib\.request'
+      - 'urlopen\s*\('
