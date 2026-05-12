@@ -3,9 +3,22 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 import openai
-openai.api_key = os.environ["OPENAI_API_KEY"]
 from agency_swarm import Agent, Agency
 
+
+def require_env(*names: str) -> None:
+    missing = [name for name in names if not os.getenv(name)]
+    if missing:
+        raise SystemExit(
+            "Missing required environment variables: "
+            + ", ".join(missing)
+            + ". Copy .env.template to .env and fill in the values."
+        )
+
+
+require_env("OPENAI_API_KEY", "MODEL")
+
+openai.api_key = os.environ["OPENAI_API_KEY"]
 MODEL = os.environ["MODEL"]
 
 researcher = Agent(

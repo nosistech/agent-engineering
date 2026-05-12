@@ -23,3 +23,43 @@ requires editing one line in the .env file and nothing else.
 ## Setup
 
 Copy the environment template and fill in your values:
+
+```bash
+cp .env.template .env
+```
+
+Edit `.env`:
+
+- `LITELLM_BASE_URL`: URL of your LiteLLM proxy, for example `http://localhost:4000`
+- `MODEL_NAME`: model identifier your LiteLLM instance expects
+- `LITELLM_API_KEY`: API key your LiteLLM proxy requires
+- `INPUT_FILE`: path to your JSON input file, default `standup_updates.json`
+- `OUTPUT_DIR`: folder where reports are saved, default `reports`
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the agent:
+
+```bash
+python agent.py
+```
+
+## How to switch AI providers
+
+Edit `MODEL_NAME` in your `.env` file. No other change is needed. The agent
+routes all calls through LiteLLM, so any provider your proxy supports works the
+same way.
+
+## What this agent does not handle
+
+- Live integrations with Slack, Teams, or another chat platform
+- Scheduled or automated execution
+- Reading from shared workspaces or databases
+- Real-time notifications or follow-up actions
+- Multi-file input
+
+(c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.

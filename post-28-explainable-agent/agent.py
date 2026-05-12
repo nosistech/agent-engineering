@@ -179,10 +179,16 @@ class ConfidenceAwareAgent:
 
 
 def call_llm(prompt: str) -> str:
+    api_key = os.getenv("LITELLM_API_KEY") or os.getenv("LITELLM_MASTER_KEY")
+    if not api_key:
+        raise SystemExit(
+            "Missing LITELLM_API_KEY. Copy .env.template to .env and fill in the value."
+        )
+
     response = completion(
         model=MODEL,
         api_base=API_BASE,
-        api_key=os.getenv("LITELLM_MASTER_KEY"),
+        api_key=api_key,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content
