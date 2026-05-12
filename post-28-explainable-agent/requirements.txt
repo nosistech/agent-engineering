@@ -1,4 +1,4 @@
 litellm==1.83.7
 python-dotenv==1.0.1
-numpy
-scikit-learn
+numpy==2.4.4
+scikit-learn==1.8.0
