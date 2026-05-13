@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +9,7 @@ from urllib.request import Request, urlopen
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
+REQUIRED_ENV = ("LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "CONFLICT_THRESHOLD")
 
 CLAIMS = [
     {
@@ -37,14 +37,14 @@ def load_env() -> None:
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
+        line = line.strip()
+        if line and "=" in line and not line.startswith("#"):
             key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip())
+            os.environ.setdefault(key, value)
 
 
 def require_env() -> None:
-    needed = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "CONFLICT_THRESHOLD"]
-    missing = [key for key in needed if not os.getenv(key)]
+    missing = [key for key in REQUIRED_ENV if not os.getenv(key)]
     if missing:
         raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
     print(f"[INFO] Active model: {os.getenv('MODEL_NAME')}")
@@ -67,12 +67,11 @@ def call_llm(prompt: str) -> str:
         },
     )
     with urlopen(request, timeout=60) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    return data["choices"][0]["message"]["content"].strip()
+        return json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
 
 
 def parse_review(raw: str) -> dict:
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.IGNORECASE)
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -98,7 +97,6 @@ def review_claim(claim: dict, reviewer_name: str, perspective: str) -> dict:
 
 def decide(claim: dict, reviews: list[dict]) -> dict:
     threshold = float(os.getenv("CONFLICT_THRESHOLD", "0.25"))
-    auto_confidence = float(os.getenv("AUTO_APPROVE_CONFIDENCE", "0.85"))
     recommendations = {review["recommendation"] for review in reviews}
     confidence_gap = abs(reviews[0]["confidence"] - reviews[1]["confidence"])
     conflict = len(recommendations) > 1 or confidence_gap > threshold
@@ -108,7 +106,7 @@ def decide(claim: dict, reviews: list[dict]) -> dict:
         decided_by = "HUMAN" if final in {"APPROVE", "REJECT"} else "CHECKPOINT"
     else:
         best = max(reviews, key=lambda item: item["confidence"])
-        final = best["recommendation"] if best["confidence"] >= auto_confidence else "HUMAN_REVIEW_REQUIRED"
+        final = best["recommendation"] if best["confidence"] >= float(os.getenv("AUTO_APPROVE_CONFIDENCE", "0.85")) else "HUMAN_REVIEW_REQUIRED"
         decided_by = "AUTO" if final in {"APPROVE", "REJECT"} else "CHECKPOINT"
 
     return {
@@ -127,7 +125,7 @@ def audit_path() -> Path:
 
 
 def append_audit(decision: dict) -> None:
-    with open(audit_path(), "a", encoding="utf-8") as file:
+    with audit_path().open("a", encoding="utf-8") as file:
         file.write(json.dumps(decision) + "\n")
 
 
