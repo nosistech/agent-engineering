@@ -6,13 +6,13 @@ This Python client gives any NosisTech agent programmatic access to a
 self-hosted AnythingLLM instance. AnythingLLM is a private document
 intelligence platform that stores internal documents in a searchable
 vector database and answers questions by retrieving exact relevant
-passages before generating a response. Everything stays on your own
-infrastructure. No data is sent to any third-party cloud service.
+passages before generating a response. Privacy depends on how your
+AnythingLLM instance, vector database, and model provider are configured.
 
-The client performs four operations: confirms the instance is reachable,
+The client performs three operations: confirms the instance is reachable,
 sends natural language questions to a named workspace and returns the
-answer with source citations, uploads new documents to a workspace for
-indexing, and retrieves recent chat history from a workspace thread.
+answer with source citations, and retrieves recent chat history from a
+workspace thread.
 
 ## Prerequisites
 
@@ -45,5 +45,6 @@ Change only the three variables in your .env file. No code changes required.
 - No stack traces or sensitive values ever printed
 - Source citations formatted for immediate human reading
 - Clear note when no citations were returned so the operator knows the confidence level
+- Smaller client surface focused on health check, workspace query, and chat history
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
