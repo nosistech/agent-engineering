@@ -2,7 +2,7 @@
 
 ## What this agent does
 
-This agent gives an AI model the ability to answer questions using only the content of your private documents. It reads a folder of plain text files, converts every paragraph into a mathematical representation called a vector embedding, and stores those vectors in a local FAISS search index. When you ask a question, the agent converts the question into the same mathematical format, finds the paragraphs in the index that are closest in meaning, and passes only those paragraphs to the AI as its only allowed source. The AI is instructed strictly to summarize what the documents say, not to add any information from its own training. If the documents do not contain a relevant answer, the agent says so clearly rather than guessing.
+This agent gives an AI model the ability to answer questions using only the content of your private documents. It reads a folder of plain text files, splits them into overlapping text chunks, converts each chunk into a mathematical representation called a vector embedding, and stores those vectors in a local FAISS search index. When you ask a question, the agent converts the question into the same mathematical format, finds the chunks in the index that are closest in meaning, and passes only those chunks to the AI as its allowed source. The AI is instructed strictly to summarize what the documents say, not to add any information from its own training. If the documents do not contain a relevant answer, the agent says so clearly rather than guessing.
 
 ## Prerequisites
 
@@ -48,11 +48,11 @@ This agent uses LiteLLM as its unified gateway. To switch providers, update MODE
 
 The original version of this agent relied heavily on the LangChain framework. NosisTech LLC rebuilt it from the ground up to remove that dependency entirely.
 
-- LangChain removed: all langchain, langchain_openai, langchain_community, and langchain_huggingface imports were stripped. The agent uses the openai Python SDK pointed at a LiteLLM proxy for chat, and litellm.embedding() directly for embeddings.
+- LangChain removed: all langchain, langchain_openai, langchain_community, and langchain_huggingface imports were stripped. The agent uses the openai Python SDK pointed at a LiteLLM proxy for chat, and httpx calls to the LiteLLM embeddings endpoint for retrieval.
 - FAISS used directly: the vector index is built with faiss and numpy instead of LangChain's FAISS wrapper.
 - Pure Python chunking: the RecursiveCharacterTextSplitter was replaced with a plain Python function.
 - All configuration externalized: model names, base URLs, API keys, chunk parameters, and document paths are read from environment variables. Nothing is hardcoded.
-- Graceful error handling: rate limit errors trigger exponential backoff with user-friendly messages. Missing environment variables are reported before any API call. Empty knowledge bases halt cleanly.
+- Simple error handling: missing environment variables are reported before any API call, empty knowledge bases halt cleanly, and model request failures are shown without exposing secrets.
 - Input validation: empty questions are rejected before any API call is made.
 - Provider-agnostic: changing MODEL_NAME or EMBEDDING_MODEL_NAME in .env switches the entire pipeline with no code changes.
 

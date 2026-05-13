@@ -2,250 +2,147 @@
 
 import os
 import sys
-import time
-import numpy as np
+
 import faiss
-import litellm
-from openai import OpenAI
+import httpx
+import numpy as np
 from dotenv import load_dotenv
+from openai import APIError, OpenAI
 
 load_dotenv()
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
-def check_environment():
-    """Validate all required environment variables are present and print active model names."""
-    required_variables = {
-        "LITELLM_BASE_URL": os.getenv("LITELLM_BASE_URL"),
-        "MODEL_NAME": os.getenv("MODEL_NAME"),
-        "EMBEDDING_MODEL_NAME": os.getenv("EMBEDDING_MODEL_NAME"),
-        "LITELLM_API_KEY": os.getenv("LITELLM_API_KEY"),
-    }
-    missing = [name for name, value in required_variables.items() if not value]
+
+def load_config():
+    required = ["LITELLM_BASE_URL", "MODEL_NAME", "EMBEDDING_MODEL_NAME", "LITELLM_API_KEY"]
+    missing = [name for name in required if not os.getenv(name)]
     if missing:
-        print("Missing required environment variables:")
-        for name in missing:
-            print(f"  - {name}")
-        print("Please set them in your .env file and try again.")
+        print("Missing required environment variables: " + ", ".join(missing))
         sys.exit(1)
-    print(f"Active chat model: {required_variables['MODEL_NAME']}")
-    print(f"Active embedding model: {required_variables['EMBEDDING_MODEL_NAME']}")
+
     return {
-        "litellm_base_url": required_variables["LITELLM_BASE_URL"],
-        "model_name": required_variables["MODEL_NAME"],
-        "embedding_model_name": required_variables["EMBEDDING_MODEL_NAME"],
-        "litellm_api_key": required_variables["LITELLM_API_KEY"],
+        "base_url": os.getenv("LITELLM_BASE_URL").rstrip("/"),
+        "chat_model": os.getenv("MODEL_NAME"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL_NAME"),
+        "api_key": os.getenv("LITELLM_API_KEY"),
         "docs_dir": os.getenv("DOCS_DIR", "docs"),
         "chunk_size": int(os.getenv("CHUNK_SIZE", "1000")),
         "chunk_overlap": int(os.getenv("CHUNK_OVERLAP", "200")),
-        "top_k_results": int(os.getenv("TOP_K_RESULTS", "4")),
+        "top_k": int(os.getenv("TOP_K_RESULTS", "4")),
     }
 
 
 def load_documents(docs_dir):
-    """Read all .txt files from the given directory and return their contents as a list."""
     if not os.path.isdir(docs_dir):
-        print(f"Documents directory '{docs_dir}' does not exist. Please create it and add .txt files.")
+        print(f"Documents directory '{docs_dir}' does not exist.")
         sys.exit(1)
-    file_paths = [
-        os.path.join(docs_dir, filename)
-        for filename in os.listdir(docs_dir)
-        if filename.endswith(".txt")
-    ]
-    if not file_paths:
-        print(f"No .txt files found in '{docs_dir}'. Please add documents to the knowledge base.")
-        sys.exit(1)
+
     documents = []
-    for file_path in file_paths:
-        with open(file_path, "r", encoding="utf-8") as file_handle:
-            documents.append(file_handle.read())
+    for filename in sorted(os.listdir(docs_dir)):
+        if filename.endswith(".txt"):
+            path = os.path.join(docs_dir, filename)
+            with open(path, encoding="utf-8") as file:
+                documents.append(file.read())
+
+    if not documents:
+        print(f"No .txt files found in '{docs_dir}'.")
+        sys.exit(1)
+
     print(f"Loaded {len(documents)} document(s) from '{docs_dir}'.")
     return documents
 
 
 def chunk_text(text, chunk_size, chunk_overlap):
-    """Split text into overlapping character-based chunks of the given size."""
     if chunk_overlap >= chunk_size:
         chunk_overlap = chunk_size // 2
-    chunks = []
-    start = 0
-    text_length = len(text)
-    while start < text_length:
-        end = min(start + chunk_size, text_length)
-        chunks.append(text[start:end])
-        if end >= text_length:
-            break
-        start += chunk_size - chunk_overlap
-    return chunks
+
+    step = chunk_size - chunk_overlap
+    return [text[start:start + chunk_size] for start in range(0, len(text), step)]
 
 
-def _embed_with_retry(texts, embedding_model_name, base_url, api_key, operation_label, max_retries=3):
-    """Call the LiteLLM proxy embeddings endpoint with exponential backoff on rate limit errors."""
-    import httpx
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {"model": embedding_model_name, "input": texts}
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = httpx.post(
-                f"{base_url}/v1/embeddings",
-                headers=headers,
-                json=payload,
-                timeout=30,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return [item["embedding"] for item in data["data"]]
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code == 429:
-                if attempt < max_retries:
-                    wait_seconds = 2 ** attempt
-                    print(f"Rate limit reached during {operation_label}. Retrying in {wait_seconds}s (attempt {attempt}/{max_retries})...")
-                    time.sleep(wait_seconds)
-                else:
-                    print(f"Rate limit persists during {operation_label} after {max_retries} attempts.")
-                    return None
-            else:
-                print(f"Connection error during {operation_label}. Is LiteLLM running at the configured URL?")
-                return None
-        except Exception:
-            print(f"Connection error during {operation_label}. Is LiteLLM running at the configured URL?")
-            return None
-    return None
-
-
-def build_index(chunks, embedding_model_name, base_url, api_key):
-    """Embed all chunks and build a FAISS L2 index for similarity search."""
-    print("Embedding chunks for the knowledge base...")
-    embeddings = _embed_with_retry(
-        texts=chunks,
-        embedding_model_name=embedding_model_name,
-        base_url=base_url,
-        api_key=api_key,
-        operation_label="index building",
+def embed_texts(texts, config):
+    response = httpx.post(
+        f"{config['base_url']}/v1/embeddings",
+        headers={
+            "Authorization": f"Bearer {config['api_key']}",
+            "Content-Type": "application/json",
+        },
+        json={"model": config["embedding_model"], "input": texts},
+        timeout=60,
     )
-    if embeddings is None:
-        print("Failed to build the knowledge base index. Exiting.")
-        sys.exit(1)
-    embedding_matrix = np.array(embeddings, dtype=np.float32)
-    dimension = embedding_matrix.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(embedding_matrix)
+    response.raise_for_status()
+    return [item["embedding"] for item in response.json()["data"]]
+
+
+def build_index(chunks, config):
+    print("Embedding chunks for the knowledge base...")
+    embeddings = np.array(embed_texts(chunks, config), dtype=np.float32)
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(embeddings)
     print(f"Total chunks embedded and indexed: {len(chunks)}")
     return index
 
 
-def retrieve_chunks(question, index, chunks, embedding_model_name, base_url, api_key, top_k):
-    """Embed the question and retrieve the top_k most similar chunks from the index."""
-    question_embeddings = _embed_with_retry(
-        texts=[question],
-        embedding_model_name=embedding_model_name,
-        base_url=base_url,
-        api_key=api_key,
-        operation_label="question retrieval",
-    )
-    if question_embeddings is None:
-        return []
-    question_vector = np.array(question_embeddings, dtype=np.float32)
-    distances, indices = index.search(question_vector, min(top_k, len(chunks)))
-    retrieved = [chunks[idx] for idx in indices[0] if 0 <= idx < len(chunks)]
-    return retrieved
+def retrieve(question, index, chunks, config):
+    question_vector = np.array(embed_texts([question], config), dtype=np.float32)
+    _, indices = index.search(question_vector, min(config["top_k"], len(chunks)))
+    return [chunks[index_id] for index_id in indices[0] if index_id >= 0]
 
 
-def answer_question(question, retrieved_chunks, client, model_name, max_retries=3):
-    """Generate an answer strictly from the retrieved document chunks via LiteLLM."""
-    if not retrieved_chunks:
-        print("I could not find relevant information in the knowledge base for that question.")
-        return
-
-    context = "\n\n".join(retrieved_chunks)
-    system_prompt = (
-        "You are a document assistant. Answer the user's question using only the information "
-        "provided below. Do not add any information from your own knowledge. If the answer "
-        "is not in the provided text, say so clearly."
-    )
-    user_message = f"Context:\n{context}\n\nQuestion: {question}"
+def answer_question(question, context_chunks, client, config):
+    context = "\n\n".join(context_chunks)
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message},
+        {
+            "role": "system",
+            "content": (
+                "Answer using only the provided context. If the answer is not "
+                "in the context, say you could not find it in the documents."
+            ),
+        },
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
     ]
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-            )
-            answer = response.choices[0].message.content
-            print(answer)
-            return
-        except Exception as error:
-            status_code = getattr(error, "status_code", None) or getattr(error, "http_status", None)
-            if status_code == 429:
-                if attempt < max_retries:
-                    wait_seconds = 2 ** attempt
-                    print(f"Rate limit reached during answer generation. Retrying in {wait_seconds}s (attempt {attempt}/{max_retries})...")
-                    time.sleep(wait_seconds)
-                else:
-                    print("Rate limit persists during answer generation. Please try again later.")
-                    return
-            else:
-                print("Could not reach the chat model. Is LiteLLM running at the configured URL?")
-                return
+    response = client.chat.completions.create(
+        model=config["chat_model"],
+        messages=messages,
+        temperature=0,
+    )
+    print(response.choices[0].message.content.strip())
 
 
 def main():
-    """Run the interactive RAG agent loop."""
-    config = check_environment()
-
-    client = OpenAI(
-        base_url=config["litellm_base_url"],
-        api_key=config["litellm_api_key"],
-    )
+    config = load_config()
+    print(f"Active chat model: {config['chat_model']}")
+    print(f"Active embedding model: {config['embedding_model']}")
 
     documents = load_documents(config["docs_dir"])
+    chunks = []
+    for document in documents:
+        chunks.extend(chunk_text(document, config["chunk_size"], config["chunk_overlap"]))
 
-    all_chunks = []
-    for doc_text in documents:
-        all_chunks.extend(chunk_text(doc_text, config["chunk_size"], config["chunk_overlap"]))
-    print(f"Total chunks created across all documents: {len(all_chunks)}")
-
-    index = build_index(
-        chunks=all_chunks,
-        embedding_model_name=config["embedding_model_name"],
-        base_url=config["litellm_base_url"],
-        api_key=config["litellm_api_key"],
-    )
+    print(f"Total chunks created across all documents: {len(chunks)}")
+    index = build_index(chunks, config)
+    client = OpenAI(base_url=config["base_url"], api_key=config["api_key"], timeout=60)
 
     print("\nKnowledge base is ready. Ask a question or type 'exit' to quit.")
-    try:
-        while True:
-            question = input("\nYour question: ").strip()
-            if question.lower() == "exit":
-                print("Goodbye.")
-                break
-            if not question:
-                print("Please enter a question.")
-                continue
-            retrieved = retrieve_chunks(
-                question=question,
-                index=index,
-                chunks=all_chunks,
-                embedding_model_name=config["embedding_model_name"],
-                base_url=config["litellm_base_url"],
-                api_key=config["litellm_api_key"],
-                top_k=config["top_k_results"],
-            )
-            answer_question(
-                question=question,
-                retrieved_chunks=retrieved,
-                client=client,
-                model_name=config["model_name"],
-            )
-    except KeyboardInterrupt:
-        print("\nGoodbye.")
+    while True:
+        question = input("\nYour question: ").strip()
+        if question.lower() == "exit":
+            print("Goodbye.")
+            break
+        if not question:
+            print("Please enter a question.")
+            continue
+        answer_question(question, retrieve(question, index, chunks, config), client, config)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (httpx.HTTPError, APIError) as error:
+        print(f"Model request failed: {error}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nGoodbye.")
