@@ -1,3 +1,5 @@
-# Tested with Python 3.14.2
-litellm==1.83.7
-requests==2.33.1
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 22: Financial Advisory Agent
+
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.
