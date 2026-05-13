@@ -1,4 +1,4 @@
 # Tested with Python 3.14
 litellm==1.83.7
 pyyaml==6.0.2
-python-dotenv==1.0.1
+python-dotenv==1.1.1

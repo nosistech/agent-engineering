@@ -2,5 +2,5 @@
 # NosisTech Agent Engineering -- Post 2: Autonomous Decision-Making Agent
 
 openai==2.30.0
-python-dotenv==1.0.1
+python-dotenv==1.1.1
 httpx==0.28.1
