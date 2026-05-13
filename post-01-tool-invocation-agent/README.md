@@ -1,41 +1,56 @@
-# Tool Invocation Agent -- Data Visualization Assistant
+# Tool Invocation Agent
 
 ## What this agent does
 
-The Tool Invocation Agent is a plain-English data visualization assistant. Business users can ask questions like "Show me spend by campaign" or "What was the trend of clicks over time?" and the agent will automatically load a CSV file, aggregate the relevant metric, and generate a professional chart (bar or line) -- all without writing a single line of code.
+This project shows the smallest useful version of tool invocation:
 
-The agent uses a lightweight, framework-free Python implementation. It leverages LiteLLM as a model proxy so you can switch between any LLM provider simply by changing one environment variable. No code changes required.
+1. A user asks for something.
+2. The model chooses one available tool.
+3. Python runs that tool.
+4. The tool result is printed.
+
+The model does not calculate campaign metrics itself. It only chooses the tool. The trusted Python code reads the CSV and does the math.
+
+## Available tools
+
+- `spend_by_campaign` totals ad spend for each campaign.
+- `clicks_by_month` totals clicks for each month.
 
 ## Prerequisites
 
 - Python 3.11 or later
-- pip
-- A running instance of LiteLLM on your VPS or local machine
-- A CSV data file with the following columns: date, campaign_name, spend, clicks, conversions, impressions
+- A running LiteLLM endpoint
+- A CSV file with `date`, `campaign_name`, `spend`, and `clicks` columns
 
 ## Setup
 
-1. Clone this repository.
-2. Copy .env.template to .env and fill in your LiteLLM base URL, model name, API key, path to your CSV file, and output directory.
-3. Install dependencies: pip install -r requirements.txt
-4. Run the agent: python agent.py
+1. Copy `.env.template` to `.env`.
+2. Fill in your LiteLLM base URL, model name, API key, and CSV path.
+3. Run the default demo:
 
-The program will run three demo queries and print a summary of results. Output charts are saved to your OUTPUT_DIR folder.
+```bash
+python agent.py
+```
+
+You can also pass a request:
+
+```bash
+python agent.py "Show me clicks by month"
+```
+
+No package install is required. The agent uses only the Python standard library.
 
 ## How to switch AI providers
 
-Edit the MODEL_NAME value in your .env file. The agent uses LiteLLM as a universal router so no other changes are required. Set MODEL_NAME to whatever model your LiteLLM instance is configured to serve. The code never changes. Only the .env changes.
+Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not need to change when you switch between supported providers.
 
 ## What NosisTech changed from the original
 
-- Removed all hardcoded model names and replaced them with environment variables.
-- Stripped deprecated provider-specific SDK calls and replaced with the OpenAI SDK pointed at a LiteLLM proxy.
-- Replaced hardcoded file paths with DATA_FILE_PATH and OUTPUT_DIR environment variables.
-- Eliminated the helper package and replaced its utilities with inline try/except blocks and clear print prefixes.
-- Removed mock-LLM and simulation modes. All execution routes through the real LLM.
-- Added startup environment validation to catch missing configuration before any API call.
-- Enhanced the query parser with an LLM-based fallback for natural language queries the keyword parser cannot handle.
-- Added rate-limit retry logic with exponential backoff, maximum three attempts.
-- Added a run summary showing which queries succeeded and where output files were saved.
+- Reduced the project to the core tool-invocation pattern.
+- Removed keyword parsing so the model is responsible for choosing the tool.
+- Removed pandas, matplotlib, chart files, and output folders.
+- Kept the CSV as the trusted data source.
+- Kept LiteLLM-compatible configuration through its OpenAI-compatible HTTP endpoint.
+- Removed third-party Python dependencies.
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.

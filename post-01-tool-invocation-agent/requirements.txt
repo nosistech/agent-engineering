@@ -1,9 +1,5 @@
 # Tested with Python 3.11
 # NosisTech Agent Engineering -- Post 1: Tool Invocation Agent
 
-litellm==1.83.7
-openai==2.30.0
-pandas==3.0.2
-matplotlib==3.10.9
-python-dotenv==1.0.1
-httpx==0.28.1
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.
