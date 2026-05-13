@@ -1,291 +1,196 @@
 # (c) 2026 NosisTech LLC. Original implementation.
+
+import json
 import os
+import re
 import sys
-import sqlite3
-import datetime
-import time
-import math
-import openai
-from dotenv import load_dotenv
-import litellm
-from litellm import completion, embedding
-from litellm.exceptions import RateLimitError, APIConnectionError
-from duckduckgo_search import DDGS
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
-# Load environment variables from .env file
-load_dotenv()
 
-# Required environment variables
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_env_file(path: str = ".env") -> None:
+    if not os.path.exists(path):
+        return
+
+    with open(path, encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+load_env_file(os.path.join(PROJECT_DIR, ".env"))
+
 REQUIRED_VARS = [
     "LITELLM_BASE_URL",
     "MODEL_NAME",
     "LITELLM_API_KEY",
-    "EMBEDDING_MODEL",
     "KNOWLEDGE_FILE",
-    "DB_PATH",
-    "SESSION_ID",
 ]
 
-def check_env_vars():
-    """Verify all required environment variables are set and exit if any are missing."""
-    missing = [var for var in REQUIRED_VARS if not os.environ.get(var)]
+
+def safe_print(text: str) -> None:
+    print(text.encode("ascii", errors="replace").decode("ascii"))
+
+
+def check_environment() -> None:
+    missing = [name for name in REQUIRED_VARS if not os.getenv(name)]
     if missing:
-        print("Missing required environment variables:", ", ".join(missing))
-        print("Please set them in a .env file. Example provided in .env.template")
+        safe_print(f"[ERROR] Missing environment variables: {', '.join(missing)}")
         sys.exit(1)
+    safe_print(f"[INFO] Active model: {os.getenv('MODEL_NAME')}")
 
-check_env_vars()
 
-LITELLM_BASE_URL = os.environ["LITELLM_BASE_URL"]
-MODEL_NAME = os.environ["MODEL_NAME"]
-LITELLM_API_KEY = os.environ["LITELLM_API_KEY"]
-EMBEDDING_MODEL = os.environ["EMBEDDING_MODEL"]
-KNOWLEDGE_FILE = os.environ["KNOWLEDGE_FILE"]
-DB_PATH = os.environ["DB_PATH"]
-SESSION_ID = os.environ["SESSION_ID"]
+def project_path(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_DIR, path)
 
-print(f"Model active: {MODEL_NAME}")
 
-# ----------------------------------------------------------------------
-# SQLite memory management
-# ----------------------------------------------------------------------
+def call_llm(messages: list[dict[str, str]]) -> str:
+    base_url = os.getenv("LITELLM_BASE_URL", "").rstrip("/")
+    payload = json.dumps(
+        {
+            "model": os.getenv("MODEL_NAME"),
+            "messages": messages,
+            "temperature": 0.2,
+        }
+    ).encode("utf-8")
 
-def init_memory_db(db_path):
-    """Create conversations table if it does not exist."""
-    os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            session_id TEXT,
-            role TEXT,
-            content TEXT,
-            timestamp TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_memory_db(DB_PATH)
-
-def load_memory(session_id):
-    """Load conversation history for a given session, returning list of dicts with role and content."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT role, content FROM conversations WHERE session_id = ? ORDER BY timestamp ASC",
-        (session_id,),
+    request = Request(
+        f"{base_url}/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {os.getenv('LITELLM_API_KEY')}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"role": row[0], "content": row[1]} for row in rows]
 
-def save_memory(session_id, role, content):
-    """Save a single message (role + content) to the conversation history."""
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO conversations (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-        (session_id, role, content, timestamp),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        with urlopen(request, timeout=60) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"LiteLLM returned HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Could not reach LiteLLM at {base_url}: {exc}") from exc
 
-# ----------------------------------------------------------------------
-# Embedding and knowledge retrieval
-# ----------------------------------------------------------------------
+    return body["choices"][0]["message"]["content"].strip()
 
-def embed_text(text):
-    """Embed text using the LiteLLM proxy via openai SDK with exponential backoff on rate limit errors."""
-    import openai
-    client = openai.OpenAI(
-        api_key=LITELLM_API_KEY,
-        base_url=LITELLM_BASE_URL,
-    )
-    max_retries = 3
-    delay = 1
-    for attempt in range(max_retries):
-        try:
-            response = client.embeddings.create(
-                model=EMBEDDING_MODEL,
-                input=[text],
-                encoding_format="float",
-            )
-            return response.data[0].embedding
-        except openai.RateLimitError:
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-                delay *= 2
-            else:
-                raise
-        except openai.APIConnectionError:
-            print("Failed to connect to LiteLLM proxy. Check if the service is running.")
-            sys.exit(1)
 
-def cosine_similarity(vec_a, vec_b):
-    """Pure Python cosine similarity between two vectors."""
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
-    norm_a = math.sqrt(sum(a * a for a in vec_a))
-    norm_b = math.sqrt(sum(b * b for b in vec_b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def words(text: str) -> set[str]:
+    stop_words = {"a", "an", "and", "are", "does", "for", "in", "is", "of", "on", "the", "to", "what"}
+    return set(re.findall(r"[a-z0-9]+", text.lower())) - stop_words
 
-def load_knowledge_chunks(file_path):
-    """Read knowledge file, split into paragraphs, embed each, return list of dicts with text and embedding."""
-    if not os.path.exists(file_path):
-        print(f"Knowledge file not found at configured path. Exiting.")
-        sys.exit(1)
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    raw_chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
-    chunks = []
-    for chunk_text in raw_chunks:
-        vec = embed_text(chunk_text)
-        chunks.append({"text": chunk_text, "embedding": vec})
-    return chunks
 
-# Load knowledge on startup
-knowledge_base = load_knowledge_chunks(KNOWLEDGE_FILE)
+def load_knowledge() -> list[str]:
+    path = project_path(os.getenv("KNOWLEDGE_FILE", "knowledge.txt"))
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Knowledge file not found: {path}")
 
-def search_knowledge(query):
-    """Search internal knowledge for the most similar chunk above threshold 0.75."""
-    query_embedding = embed_text(query)
-    best_score = -1.0
+    with open(path, encoding="utf-8") as file:
+        return [chunk.strip() for chunk in file.read().split("\n\n") if chunk.strip()]
+
+
+def search_internal_knowledge(query: str, chunks: list[str]) -> str | None:
+    query_words = words(query)
+    external_topic_words = {"competitor", "competitors", "latest", "market", "news", "pricing", "stock", "today"}
     best_chunk = None
-    for chunk in knowledge_base:
-        score = cosine_similarity(query_embedding, chunk["embedding"])
+    best_score = 0
+
+    for chunk in chunks:
+        chunk_words = words(chunk)
+        if query_words & external_topic_words and not query_words & external_topic_words & chunk_words:
+            continue
+        score = len(query_words & chunk_words)
         if score > best_score:
             best_score = score
-            best_chunk = chunk["text"]
-    if best_score >= 0.75 and best_chunk is not None:
+            best_chunk = chunk
+
+    if best_score >= 2:
         return best_chunk
     return None
 
-# ----------------------------------------------------------------------
-# Web search tool (fallback)
-# ----------------------------------------------------------------------
 
-def web_search(query):
-    """Perform a DuckDuckGo text search and return the snippet of the first result, truncated to 500 chars."""
+def web_search(query: str) -> str:
+    params = urlencode({"q": query, "format": "json", "no_redirect": "1", "no_html": "1"})
+    request = Request(
+        f"https://api.duckduckgo.com/?{params}",
+        headers={"User-Agent": "NosisTech-Agent-Engineering-Demo"},
+    )
+
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=1))
-        if results:
-            snippet = results[0].get("body", "")
-            return snippet[:500]
-        else:
-            return "No web results found."
+        with urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
     except Exception:
-        return "No web results found."
+        return "No web result was available."
 
-# ----------------------------------------------------------------------
-# Prompt construction and agent execution
-# ----------------------------------------------------------------------
+    abstract = data.get("AbstractText")
+    if abstract:
+        return abstract
 
-def build_prompt(memory, context, source_label, query):
-    """Build the message list for the LiteLLM completion call."""
-    messages = []
-    messages.append({
-        "role": "system",
-        "content": (
-            "You are a research assistant for NosisTech LLC. "
-            "You answer questions using the provided context. "
-            "Be concise and factual. Do not invent information not present in the context."
-        ),
-    })
-    for msg in memory:
-        messages.append(msg)
-    messages.append({
-        "role": "user",
-        "content": f"Context from {source_label}:\n{context}\n\nQuestion: {query}",
-    })
-    return messages
+    related_topics = data.get("RelatedTopics") or []
+    for topic in related_topics:
+        if isinstance(topic, dict) and topic.get("Text"):
+            return topic["Text"]
 
-def run_agent(session_id, query):
-    """Execute the full agent pipeline: knowledge search, web fallback, LLM reply, memory save."""
-    if not query or not isinstance(query, str):
-        print("Empty query. Skipping.")
-        return
-    if len(query) > 1000:
-        print("Query too long (max 1000 characters). Skipping.")
-        return
+    return "No web result was available."
 
-    internal_found = search_knowledge(query)
-    if internal_found:
-        context = internal_found
-        source_label = "internal knowledge"
-    else:
+
+def answer_question(query: str) -> tuple[str, str]:
+    chunks = load_knowledge()
+    context = search_internal_knowledge(query, chunks)
+    source_label = "internal knowledge"
+
+    if context is None:
         context = web_search(query)
         source_label = "web search"
 
-    memory = load_memory(session_id)
-    messages = build_prompt(memory, context, source_label, query)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a concise research assistant for NosisTech LLC. "
+                "Answer only from the provided context. "
+                "If the context is insufficient, say so plainly."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Source: {source_label}\nContext:\n{context}\n\nQuestion: {query}",
+        },
+    ]
+    return call_llm(messages), source_label
 
-    client = openai.OpenAI(
-        api_key=LITELLM_API_KEY,
-        base_url=LITELLM_BASE_URL,
-    )
-    max_retries = 3
-    delay = 1
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-            )
-            break
-        except openai.RateLimitError:
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-                delay *= 2
-            else:
-                raise
-        except openai.APIConnectionError:
-            print("Failed to connect to LiteLLM proxy. Check if the service is running.")
-            sys.exit(1)
 
-    assistant_reply = response.choices[0].message.content
+def run_agent(query: str) -> None:
+    safe_print(f"[USER] {query}")
+    answer, source_label = answer_question(query)
+    safe_print(f"[AGENT] {answer}")
+    safe_print(f"[SOURCE] {source_label}\n")
 
-    save_memory(session_id, "user", query)
-    save_memory(session_id, "assistant", assistant_reply)
 
-    print(assistant_reply)
-    if f"Source: {source_label}" not in assistant_reply:
-        print(f"Source: {source_label}")
+def main() -> None:
+    check_environment()
 
-# ----------------------------------------------------------------------
-# Main demo
-# ----------------------------------------------------------------------
+    if len(sys.argv) > 1:
+        run_agent(" ".join(sys.argv[1:]))
+        return
 
-if __name__ == "__main__":
-    if not os.path.exists(KNOWLEDGE_FILE):
-        print("Knowledge file not found. Creating sample knowledge file.")
-        sample_content = (
-            "NosisTech LLC provides AI governance consulting services. "
-            "This includes AI risk assessments, responsible AI policy drafting, "
-            "and compliance audits for EU AI Act and NIST AI RMF.\n\n"
-            "Our cloud security practice helps organizations secure their multi-cloud "
-            "environments on AWS, Azure, and GCP. We perform configuration reviews, "
-            "penetration testing, and implement zero-trust architectures.\n\n"
-            "Additionally, NosisTech offers executive workshops on AI strategy, "
-            "board-level AI risk awareness, and AI ethics framework development."
-        )
-        os.makedirs(
-            os.path.dirname(KNOWLEDGE_FILE) if os.path.dirname(KNOWLEDGE_FILE) else ".",
-            exist_ok=True
-        )
-        with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-            f.write(sample_content)
-        knowledge_base = load_knowledge_chunks(KNOWLEDGE_FILE)
-
-    print(f"Session ID: {SESSION_ID}")
-    queries = [
+    demo_queries = [
         "What services does NosisTech offer?",
         "Who are the main competitors in AI governance consulting?",
-        "Remind me what NosisTech does.",
     ]
-    for q in queries:
-        print(f"\n--- Query: {q} ---")
-        run_agent(SESSION_ID, q)
+    for query in demo_queries:
+        run_agent(query)
+
+
+if __name__ == "__main__":
+    main()
