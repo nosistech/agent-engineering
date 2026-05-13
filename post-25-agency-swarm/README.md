@@ -10,6 +10,20 @@ This example demonstrates an Agency Swarm workflow with three roles:
 
 The goal is to show the handoff pattern in a compact content pipeline.
 
+The current Agency Swarm API wires those handoffs with `communication_flows`:
+
+```python
+agency = Agency(
+    ceo,
+    communication_flows=[
+        ceo > researcher,
+        ceo > writer,
+    ],
+)
+```
+
+Agency Swarm may create a local `settings.json` file while running. That file is generated runtime state and is intentionally ignored by git.
+
 ## Prerequisites
 
 - Python 3.11 or newer
