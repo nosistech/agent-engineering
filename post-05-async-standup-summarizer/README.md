@@ -54,6 +54,16 @@ Edit `MODEL_NAME` in your `.env` file. No other change is needed. The agent
 routes all calls through LiteLLM, so any provider your proxy supports works the
 same way.
 
+## What NosisTech changed from the original
+
+- Replaced framework-heavy orchestration with a small Python pipeline.
+- Uses the OpenAI SDK pointed at a LiteLLM proxy instead of importing the LiteLLM Python package.
+- Loads standup updates from a simple JSON file.
+- Validates required environment variables before making any model calls.
+- Skips malformed contributor entries while keeping valid updates moving.
+- Adds simple rate-limit backoff around model calls.
+- Saves each final team report to a timestamped file in the reports folder.
+
 ## What this agent does not handle
 
 - Live integrations with Slack, Teams, or another chat platform

@@ -1,199 +1,148 @@
 # (c) 2026 NosisTech LLC. Original implementation.
+
+"""Async Standup Summarizer: turn JSON updates into a team report."""
+
+import json
 import os
 import sys
-import json
 import time
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI, APIError, RateLimitError, APIConnectionError
+from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 
-# ----------------------------------------------------------------------
-# Environment and configuration
-# ----------------------------------------------------------------------
-def load_environment():
-    """Load required environment variables, validate, and return them."""
-    required_vars = [
-        "LITELLM_BASE_URL",
-        "MODEL_NAME",
-        "LITELLM_API_KEY",
-        "INPUT_FILE",
-        "OUTPUT_DIR"
-    ]
-    missing = [var for var in required_vars if not os.getenv(var)]
+
+REQUIRED_ENV = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "INPUT_FILE", "OUTPUT_DIR"]
+
+INDIVIDUAL_PROMPT = (
+    "You are a professional meeting assistant. Summarize the standup update into exactly "
+    "three lines.\nLine 1: Completed (what was finished).\nLine 2: In Progress "
+    "(what is being worked on now).\nLine 3: Blockers (anything blocking progress, "
+    "or 'None' if none exist).\nBe concise and factual. Do not add information not "
+    "present in the original update."
+)
+
+TEAM_PROMPT = (
+    "You are a professional meeting assistant. You will receive individual standup "
+    "summaries from multiple team members. Produce a consolidated team standup report "
+    "with three sections:\n1. Completed This Period\n2. In Progress\n3. Active Blockers\n\n"
+    "Under each section, list contributors and their relevant items as bullet points. "
+    "Keep the tone factual and professional."
+)
+
+
+def load_config() -> dict[str, str]:
+    load_dotenv()
+    missing = [name for name in REQUIRED_ENV if not os.getenv(name)]
     if missing:
-        print("ERROR: Missing required environment variables:")
-        for var in missing:
-            print(f"  - {var}")
-        sys.exit(1)
-
-    config = {var: os.getenv(var) for var in required_vars}
+        raise RuntimeError("Missing required environment variables:\n" + "\n".join(f"  - {name}" for name in missing))
+    config = {name: os.environ[name] for name in REQUIRED_ENV}
     print(f"Active model: {config['MODEL_NAME']}")
     return config
 
 
-# ----------------------------------------------------------------------
-# Standup data loading
-# ----------------------------------------------------------------------
-def load_updates(input_path):
-    """Load contributor updates from a JSON file, skipping malformed entries."""
+def load_updates(input_path: str) -> list[dict[str, str]]:
+    path = Path(input_path)
+    if not path.exists():
+        raise RuntimeError(f"Input file not found: {input_path}")
+
     try:
-        with open(input_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"ERROR: Input file not found: {input_path}")
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print(f"ERROR: Input file contains invalid JSON: {input_path}")
-        sys.exit(1)
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Input file contains invalid JSON: {input_path}") from exc
 
     if not isinstance(data, list):
-        print("ERROR: Input JSON must be a list of contributor objects.")
-        sys.exit(1)
+        raise RuntimeError("Input JSON must be a list of contributor objects.")
 
     contributors = []
-    for idx, entry in enumerate(data, start=1):
+    for index, entry in enumerate(data, start=1):
         if not isinstance(entry, dict):
-            print(f"WARNING: Entry {idx} is not a dictionary, skipping.")
+            print(f"WARNING: Entry {index} is not a dictionary, skipping.")
             continue
-        if "name" not in entry or "update" not in entry:
-            print(f"WARNING: Entry {idx} missing 'name' or 'update', skipping.")
+        if not entry.get("name") or not entry.get("update"):
+            print(f"WARNING: Entry {index} missing 'name' or 'update', skipping.")
             continue
         contributors.append({"name": entry["name"], "update": entry["update"]})
 
     if not contributors:
-        print("ERROR: No valid contributor entries found in the input file.")
-        sys.exit(1)
-
+        raise RuntimeError("No valid contributor entries found in the input file.")
     return contributors
 
 
-# ----------------------------------------------------------------------
-# LLM helper with exponential backoff
-# ----------------------------------------------------------------------
-def _call_with_backoff(client, model, messages, max_retries=3):
-    """Call the LiteLLM completion endpoint with exponential backoff on rate limits."""
-    for attempt in range(max_retries):
+def call_model(client: OpenAI, model: str, messages: list[dict[str, str]]) -> str:
+    for attempt in range(1, 4):
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.3
-            )
+            response = client.chat.completions.create(model=model, messages=messages, temperature=0.3)
             return response.choices[0].message.content.strip()
         except RateLimitError:
-            wait = 2 ** attempt
-            print(f"Rate limited. Retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
+            if attempt == 3:
+                raise RuntimeError("Rate limit retries exhausted. Please try again later.")
+            wait = 2 ** (attempt - 1)
+            print(f"Rate limited. Retrying in {wait}s (attempt {attempt}/3)...")
             time.sleep(wait)
-        except APIConnectionError:
-            print("ERROR: Cannot connect to the LiteLLM endpoint. Check LITELLM_BASE_URL and your network.")
-            sys.exit(1)
-        except APIError as e:
-            print(f"ERROR: API call failed: {e}")
-            sys.exit(1)
+        except APIConnectionError as exc:
+            raise RuntimeError("Cannot connect to LiteLLM. Check LITELLM_BASE_URL and your network.") from exc
+        except APIError as exc:
+            raise RuntimeError(f"API call failed: {exc}") from exc
 
-    print("ERROR: Rate limit retries exhausted. Please try again later.")
-    sys.exit(1)
+    raise RuntimeError("Model call failed.")
 
 
-# ----------------------------------------------------------------------
-# Individual summarization
-# ----------------------------------------------------------------------
-def summarize_individual(client, model_name, contributor):
-    """Summarize a single contributor's standup into three concise lines."""
-    system_prompt = (
-        "You are a professional meeting assistant. Summarize the standup update "
-        "into exactly three lines.\n"
-        "Line 1: Completed (what was finished).\n"
-        "Line 2: In Progress (what is being worked on now).\n"
-        "Line 3: Blockers (anything blocking progress, or 'None' if none exist).\n"
-        "Be concise and factual. Do not add information not present in the original update."
-    )
-    user_prompt = (
-        f"Contributor name: {contributor['name']}.\n"
-        f"Update: {contributor['update']}"
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    return _call_with_backoff(client, model_name, messages)
-
-
-# ----------------------------------------------------------------------
-# Team report synthesis
-# ----------------------------------------------------------------------
-def synthesize_team_report(client, model_name, summaries):
-    """Combine individual summaries into a consolidated team standup report."""
-    system_prompt = (
-        "You are a professional meeting assistant. You will receive individual "
-        "standup summaries from multiple team members. Produce a consolidated "
-        "team standup report. Group the report into three sections:\n"
-        "1. Completed This Period\n"
-        "2. In Progress\n"
-        "3. Active Blockers\n\n"
-        "Under each section, list contributors and their relevant items as bullet "
-        "points. Keep the tone factual and professional."
-    )
-    contributors_text = ""
-    for idx, (contributor, summary) in enumerate(summaries, start=1):
-        contributors_text += (
-            f"Contributor {idx}: {contributor['name']}\n"
-            f"Summary:\n{summary}\n\n"
-        )
-    user_prompt = f"Team standup summaries:\n\n{contributors_text}"
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    return _call_with_backoff(client, model_name, messages)
-
-
-# ----------------------------------------------------------------------
-# Output persistence
-# ----------------------------------------------------------------------
-def save_report(report_text, output_dir):
-    """Save the team report to a timestamped file inside output_dir."""
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"standup_report_{timestamp}.txt"
-    filepath = os.path.join(output_dir, filename)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(report_text)
-    print(f"Report saved to: {filepath}")
-
-
-# ----------------------------------------------------------------------
-# Main orchestration
-# ----------------------------------------------------------------------
-def main():
-    """Run the full async standup summarization pipeline."""
-    load_dotenv()
-    config = load_environment()
-
-    client = OpenAI(
-        base_url=config["LITELLM_BASE_URL"],
-        api_key=config["LITELLM_API_KEY"]
+def summarize_contributor(client: OpenAI, model: str, contributor: dict[str, str]) -> str:
+    return call_model(
+        client,
+        model,
+        [
+            {"role": "system", "content": INDIVIDUAL_PROMPT},
+            {"role": "user", "content": f"Contributor name: {contributor['name']}.\nUpdate: {contributor['update']}"},
+        ],
     )
 
-    contributors = load_updates(config["INPUT_FILE"])
-    print(f"Loaded {len(contributors)} contributor(s).")
 
-    individual_summaries = []
-    for contributor in contributors:
-        summary = summarize_individual(client, config["MODEL_NAME"], contributor)
-        individual_summaries.append((contributor, summary))
-        print(f"{contributor['name']}: summarized")
+def synthesize_team_report(client: OpenAI, model: str, summaries: list[tuple[dict[str, str], str]]) -> str:
+    contributor_blocks = "\n\n".join(
+        f"Contributor {index}: {contributor['name']}\nSummary:\n{summary}"
+        for index, (contributor, summary) in enumerate(summaries, start=1)
+    )
+    return call_model(
+        client,
+        model,
+        [
+            {"role": "system", "content": TEAM_PROMPT},
+            {"role": "user", "content": f"Team standup summaries:\n\n{contributor_blocks}"},
+        ],
+    )
 
-    print("Generating team report...")
-    team_report = synthesize_team_report(client, config["MODEL_NAME"], individual_summaries)
 
-    print("\n" + "=" * 60)
-    print(team_report)
-    print("=" * 60 + "\n")
+def save_report(report: str, output_dir: str) -> Path:
+    report_dir = Path(output_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"standup_report_{datetime.now():%Y%m%d_%H%M%S}.txt"
+    report_path.write_text(report, encoding="utf-8")
+    return report_path
 
-    save_report(team_report, config["OUTPUT_DIR"])
+
+def main() -> None:
+    try:
+        config = load_config()
+        client = OpenAI(base_url=config["LITELLM_BASE_URL"], api_key=config["LITELLM_API_KEY"])
+        contributors = load_updates(config["INPUT_FILE"])
+        print(f"Loaded {len(contributors)} contributor(s).")
+
+        summaries = []
+        for contributor in contributors:
+            summary = summarize_contributor(client, config["MODEL_NAME"], contributor)
+            summaries.append((contributor, summary))
+            print(f"{contributor['name']}: summarized")
+
+        print("Generating team report...")
+        team_report = synthesize_team_report(client, config["MODEL_NAME"], summaries)
+        print(f"\n{'=' * 60}\n{team_report}\n{'=' * 60}\n")
+        print(f"Report saved to: {save_report(team_report, config['OUTPUT_DIR'])}")
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
