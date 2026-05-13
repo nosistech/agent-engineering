@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from urllib.parse import urlencode
@@ -10,6 +9,14 @@ from urllib.request import Request, urlopen
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
+REQUIRED_ENV = (
+    "LITELLM_BASE_URL",
+    "MODEL_NAME",
+    "LITELLM_API_KEY",
+    "FINNHUB_API_KEY",
+    "ALPHA_VANTAGE_API_KEY",
+    "TICKER",
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -20,21 +27,14 @@ def load_env() -> None:
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
+        line = line.strip()
+        if line and "=" in line and not line.startswith("#"):
             key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip())
+            os.environ.setdefault(key, value)
 
 
 def require_env() -> None:
-    needed = [
-        "LITELLM_BASE_URL",
-        "MODEL_NAME",
-        "LITELLM_API_KEY",
-        "FINNHUB_API_KEY",
-        "ALPHA_VANTAGE_API_KEY",
-        "TICKER",
-    ]
-    missing = [key for key in needed if not os.getenv(key)]
+    missing = [key for key in REQUIRED_ENV if not os.getenv(key)]
     if missing:
         raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
     print(f"[INFO] Active model: {os.getenv('MODEL_NAME')}")
@@ -42,7 +42,7 @@ def require_env() -> None:
 
 def ticker() -> str:
     value = os.getenv("TICKER", "").strip().upper()
-    if not re.fullmatch(r"[A-Z0-9]{1,5}", value):
+    if not value.isalnum() or len(value) > 5:
         raise SystemExit("Ticker must be 1 to 5 letters or digits.")
     return value
 
@@ -82,15 +82,14 @@ def fetch_news(symbol: str, limit: int = 3) -> list[dict]:
     if "Information" in data:
         raise SystemExit("Alpha Vantage rate limit reached. Try again later.")
 
-    articles = []
-    for item in data.get("feed", [])[:limit]:
-        articles.append(
-            {
-                "title": item.get("title"),
-                "summary": item.get("summary"),
-                "sentiment": item.get("overall_sentiment_label", "Neutral"),
-            }
-        )
+    articles = [
+        {
+            "title": item.get("title"),
+            "summary": item.get("summary"),
+            "sentiment": item.get("overall_sentiment_label", "Neutral"),
+        }
+        for item in data.get("feed", [])[:limit]
+    ]
     if not articles:
         raise SystemExit(f"No news returned for ticker: {symbol}")
     return articles
@@ -124,8 +123,7 @@ def call_llm(prompt: str) -> str:
         },
     )
     with urlopen(request, timeout=60) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    return data["choices"][0]["message"]["content"].strip()
+        return json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
 
 
 def build_prompt(market: dict, news: list[dict]) -> str:
