@@ -11,6 +11,10 @@ from urllib.request import Request, urlopen
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 
 def load_env_file(path: str = ".env") -> None:
     if not os.path.exists(path):
@@ -35,7 +39,7 @@ REQUIRED_ENV_VARS = [
 
 
 def safe_print(text: str) -> None:
-    print(text.encode("ascii", errors="replace").decode("ascii"))
+    print(text)
 
 
 def memory_path() -> str:
