@@ -1,78 +1,89 @@
 # (c) 2026 NosisTech LLC. Original implementation.
-# Calls the Langflow RFP Analyzer flow via its auto-generated REST API.
-# Requires Langflow Desktop running locally and a Langflow API key.
-# All configuration via .env file. Never hardcode credentials.
+# Calls a Langflow RFP Analyzer flow through its REST API.
 
-import requests
-import uuid
+import json
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-LANGFLOW_API_KEY = os.getenv("LANGFLOW_API_KEY")
-LANGFLOW_FLOW_ID = os.getenv("LANGFLOW_FLOW_ID")
-LANGFLOW_BASE_URL = os.getenv("LANGFLOW_BASE_URL", "http://localhost:7860")
+import sys
+import uuid
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
-def check_env() -> None:
-    """Verify required environment variables are present before making any API call."""
-    missing = []
-    if not LANGFLOW_API_KEY:
-        missing.append("LANGFLOW_API_KEY")
-    if not LANGFLOW_FLOW_ID:
-        missing.append("LANGFLOW_FLOW_ID")
-    if missing:
-        print(f"Missing required environment variables: {', '.join(missing)}")
-        print("Copy .env.template to .env and fill in your values.")
-        raise SystemExit(1)
+ROOT = Path(__file__).resolve().parent
+REQUIRED_ENV = ("LANGFLOW_API_KEY", "LANGFLOW_FLOW_ID")
+SAMPLE_RFP = (
+    "NosisTech LLC is seeking a vendor to build an AI governance dashboard. "
+    "The project must be completed by September 30, 2026. "
+    "The vendor must comply with EU AI Act Article 13 transparency requirements. "
+    "Estimated budget is between $50,000 and $80,000 USD."
+)
 
 
-def analyze_rfp(user_input: str) -> str:
-    """Send RFP text to the Langflow flow and return the structured analysis."""
-    url = f"{LANGFLOW_BASE_URL}/api/v1/run/{LANGFLOW_FLOW_ID}"
+def load_env():
+    env_file = ROOT / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
 
-    payload = {
-        "output_type": "chat",
-        "input_type": "chat",
-        "input_value": user_input,
-        "session_id": str(uuid.uuid4()),
-    }
 
-    headers = {"x-api-key": LANGFLOW_API_KEY}
-
-    print(f"Sending request to Langflow flow: {LANGFLOW_FLOW_ID}")
+def analyze_rfp(text):
+    base_url = os.getenv("LANGFLOW_BASE_URL", "http://localhost:7860").rstrip("/")
+    url = f"{base_url}/api/v1/run/{os.getenv('LANGFLOW_FLOW_ID')}"
+    body = json.dumps(
+        {
+            "output_type": "chat",
+            "input_type": "chat",
+            "input_value": text,
+            "session_id": str(uuid.uuid4()),
+            "tweaks": {
+                "OpenAIModel-y92rB": {
+                    "model_name": os.getenv("LANGFLOW_MODEL_NAME", "deepseek-v4-pro"),
+                    "openai_api_base": os.getenv("LANGFLOW_OPENAI_API_BASE", "http://localhost:4000"),
+                }
+            },
+        }
+    ).encode("utf-8")
+    request = Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": os.getenv("LANGFLOW_API_KEY"),
+        },
+    )
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        result = data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
-        return result
-    except requests.exceptions.ConnectionError:
-        print("Could not connect to Langflow. Make sure Langflow Desktop is running.")
-        raise SystemExit(1)
-    except requests.exceptions.HTTPError as e:
-        print(f"Langflow returned an error: {e}")
-        raise SystemExit(1)
-    except (KeyError, IndexError):
-        print("Unexpected response format from Langflow.")
-        print("Raw response:", response.text[:500])
-        raise SystemExit(1)
+        with urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
+    except HTTPError as error:
+        details = error.read().decode("utf-8", errors="replace")[:500]
+        raise SystemExit(
+            f"Langflow returned HTTP {error.code}: {error.reason}\n{details}"
+        ) from error
+    except URLError as error:
+        raise SystemExit(f"Could not connect to Langflow at {base_url}: {error}") from error
+    except (KeyError, IndexError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Unexpected Langflow response format: {error}") from error
+
+
+def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    load_env()
+    missing = [key for key in REQUIRED_ENV if not os.getenv(key)]
+    if missing:
+        raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
+
+    print("RFP INPUT")
+    print(SAMPLE_RFP)
+    print("\nANALYSIS")
+    print(analyze_rfp(SAMPLE_RFP))
 
 
 if __name__ == "__main__":
-    check_env()
-
-    sample_rfp = (
-        "NosisTech LLC is seeking a vendor to build an AI governance dashboard. "
-        "The project must be completed by September 30, 2026. "
-        "The vendor must comply with EU AI Act Article 13 transparency requirements. "
-        "Estimated budget is between $50,000 and $80,000 USD."
-    )
-
-    print("\nRFP Input:")
-    print(sample_rfp)
-    print("\nAnalysis:")
-    result = analyze_rfp(sample_rfp)
-    print(result)
+    main()

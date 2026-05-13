@@ -1,2 +1,5 @@
-python-dotenv==1.1.1
-requests==2.32.5
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 18: Langflow RFP Analyzer
+
+# No Python package dependencies.
+# Requires a running Langflow Desktop/server and an exported flow ID.

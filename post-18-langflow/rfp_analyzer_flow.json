@@ -713,7 +713,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "f3f5425f8e65382e50fac7bb4f9c928b053687975b5bdc07a30cd0c8ac43588e"
+                "value": "OPENAI_API_KEY"
               },
               "code": {
                 "advanced": true,
