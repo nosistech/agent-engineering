@@ -1,47 +1,58 @@
 # Marketing Content Assistant
 
-## What this agent does
+## What This Agent Does
 
-This agent automates a multi-role marketing content pipeline. It takes a product name, description, and target audience, then runs them through an assembly line of AI specialists: a Campaign Planner produces a structured brief, a Researcher gathers background context, and a Writer drafts three pieces of marketing content: an email, a blog post, and ad copy. An Editor enforces brand compliance by checking every draft against a configurable list of forbidden words and a required tone descriptor. If a draft fails, the Editor explains why and the Writer attempts a new version until the draft passes or the retry cap is reached.
+This project demonstrates a small multi-role marketing content pipeline:
 
-The system is built in Python using the OpenAI-compatible SDK interface. It works with any major model provider by changing the base URL and model name in the settings file. No code changes required.
+1. A campaign planner creates a short campaign brief.
+2. A researcher adds audience and positioning context.
+3. A writer drafts an email, a short blog post, and social ad options.
+4. A brand editor scores each draft against the configured tone and forbidden words.
+
+The model does the creative work, but the Python script controls the workflow, retries,
+environment validation, and printed output.
 
 ## Prerequisites
 
-- Python 3.10 or later (tested with 3.14)
-- Access to an OpenAI-compatible endpoint (LiteLLM proxy or direct provider URL)
-- An API key for that endpoint
-- A .env file populated from .env.template
+- Python 3.11 or later
+- A running LiteLLM-compatible endpoint
+- A populated `.env` file
 
 ## Setup
 
-1. Clone the repository and navigate to the project folder.
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Copy .env.template to .env and fill in all values.
-4. Run the pipeline:
-   python agent.py
+1. Copy `.env.template` to `.env`.
+2. Fill in the LiteLLM URL, model, API key, product details, audience, and brand rules.
+3. Run the agent:
 
-## How to switch AI providers
+```bash
+python agent.py
+```
 
-Update LITELLM_BASE_URL, MODEL_NAME, and LITELLM_API_KEY in your .env file. No other change is needed. The agent works with any OpenAI-compatible endpoint.
+No package install is required. The agent uses only the Python standard library.
 
-## Routing modes
+## How to Switch AI Providers
 
-This agent supports two routing configurations:
+Edit `MODEL_NAME` in `.env`. Because the agent calls a LiteLLM-compatible endpoint,
+the code does not need to change when you switch between supported providers.
 
-Mode 1 (proxy): Set LITELLM_BASE_URL to your LiteLLM proxy address. The proxy handles provider routing. MODEL_NAME must match a model_name entry in your proxy config.
+## Configuration
 
-Mode 2 (direct): Set LITELLM_BASE_URL to the provider's API base URL directly. Set LITELLM_API_KEY to the provider's API key. MODEL_NAME must match the provider's model identifier.
+- `LITELLM_BASE_URL`: LiteLLM-compatible endpoint, usually `http://localhost:4000`
+- `MODEL_NAME`: model name configured in LiteLLM
+- `LITELLM_API_KEY`: API key for the endpoint
+- `PRODUCT_NAME`: product being marketed
+- `PRODUCT_DESCRIPTION`: short product description
+- `TARGET_AUDIENCE`: intended customer
+- `FORBIDDEN_WORDS`: comma-separated words the editor should reject
+- `BRAND_TONE`: tone the editor should enforce
+- `MAX_EDITOR_RETRIES`: number of writer/editor attempts per content type
 
-Mode 2 was used during testing when the proxy returned infrastructure errors. Both modes produce identical output from the agent's perspective.
+## What NosisTech Changed from the Original
 
-## Known limitations
-
-The Editor call uses max_tokens=200. On some providers and for longer drafts, this can cause the JSON response to be truncated, resulting in a parse error. If ad copy drafts consistently fail with parse errors, increase max_tokens on the editor call to 400.
-
-## What NosisTech changed from the original
-
-The original implementation relied on LangChain, provider-specific client libraries, and hardcoded model names. NosisTech removed all LangChain dependencies, replaced provider SDKs with the OpenAI-compatible SDK interface, and moved every configurable value to environment variables. Added: automatic input validation, graceful failure handling, exponential backoff on rate limits, a JSON-based brand compliance editor with a retry loop, and brand constraints loaded entirely from .env. Two routing modes are documented to reflect what actually worked during testing.
+- Reduced the project to the core planner/researcher/writer/editor architecture.
+- Removed LangChain, provider-specific clients, the OpenAI SDK, dotenv, and retry scaffolding.
+- Replaced package dependencies with a standard-library HTTP call.
+- Kept brand constraints and product details in `.env`.
+- Kept the editor retry loop, but made it small enough to inspect in one file.
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.

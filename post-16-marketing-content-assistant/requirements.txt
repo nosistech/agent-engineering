@@ -1,3 +1,5 @@
-# Tested with Python 3.14
-python-dotenv==1.1.1
-litellm==1.83.7
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 16: Marketing Content Assistant
+
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.
