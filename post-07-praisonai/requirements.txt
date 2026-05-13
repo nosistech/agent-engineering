@@ -1,4 +1,4 @@
 # Tested with Python 3.14
-litellm==1.83.7
+openai==2.30.0
 pyyaml==6.0.2
 python-dotenv==1.1.1

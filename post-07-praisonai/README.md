@@ -2,18 +2,17 @@
 
 ## What This Agent Does
 
-This agent implements a two-agent sequential workflow built on the PraisonAI
-pattern. A Researcher agent gathers and structures information on any topic
-you provide. A Writer agent then takes those findings and produces a
-plain-English summary a business leader can act on immediately.
+This agent implements a two-agent sequential workflow inspired by the PraisonAI
+pattern. A Researcher agent structures concise information on the topic you
+provide. A Writer agent then takes those findings and produces a short business
+summary.
 
 The entire workflow is configured through a simple agents.yaml file. No
 Python code changes are needed to modify the agents' roles, goals, or
 instructions. AI provider switching is handled by LiteLLM: changing the
 MODEL_NAME environment variable reroutes all requests to a different model
-without touching the source code. The project follows production-grade
-security practices with no hardcoded secrets and environment-variable-only
-configuration.
+without touching the source code. The project keeps secrets out of the source
+code and uses environment-variable-only configuration.
 
 ## Prerequisites
 
@@ -33,7 +32,6 @@ configuration.
    - LITELLM_BASE_URL: URL of your LiteLLM proxy (example: http://localhost:4000)
    - MODEL_NAME: Model identifier your proxy expects (example: gpt-4o or claude-3-5-sonnet-20241022)
    - LITELLM_API_KEY: Your LiteLLM proxy master key
-   - MEMORY_PATH: Optional path for persistent storage (not used in this version)
 
 4. Install dependencies:
 
@@ -41,7 +39,7 @@ configuration.
 
 5. Run the agent with a topic:
 
-   python agent.py "latest trends in AI governance"
+   python agent.py "AI governance risk register"
 
 ## How to Switch AI Providers
 
