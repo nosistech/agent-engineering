@@ -1,187 +1,123 @@
 # MIT License, Copyright 2025 Packt
-import os
+
 import json
-import time
-import logging
+import os
 import sys
+import time
+from collections import deque
+
 from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError, APIConnectionError, OpenAIError
+from openai import APIConnectionError, OpenAI, OpenAIError, RateLimitError
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+load_dotenv()
 
-def check_environment():
-    """Verify that all required environment variables are present. Exit cleanly if any are missing."""
-    required_vars = [
-        "LITELLM_BASE_URL",
-        "MODEL_NAME",
-        "LITELLM_API_KEY",
-        "GOAL",
-    ]
-    missing = [var for var in required_vars if not os.getenv(var)]
+
+def require_config():
+    required = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "GOAL"]
+    missing = [key for key in required if not os.getenv(key)]
     if missing:
-        print("Missing required environment variables. Please set the following in your .env file:")
-        for var in missing:
-            print(f"  - {var}")
-        sys.exit(1)
+        raise SystemExit("Missing required environment variables: " + ", ".join(missing))
+    if len(os.getenv("GOAL")) > 1000:
+        raise SystemExit("The GOAL exceeds 1000 characters. Please shorten it.")
 
-def setup_llm_client():
-    """Create and return an OpenAI client pointed at the LiteLLM proxy."""
-    return OpenAI(
-        base_url=os.getenv("LITELLM_BASE_URL"),
-        api_key=os.getenv("LITELLM_API_KEY"),
-    )
 
-def call_with_backoff(client, model, messages):
-    """
-    Send a chat completion request to LiteLLM with rate-limit handling.
-    Retries with exponential backoff on rate limits; exits on connection errors.
-    """
-    max_attempts = 3
-    for attempt in range(1, max_attempts + 1):
+def ask_model(client, model, goal):
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Break the goal into dependency-aware tasks. Return only JSON. "
+                "Use an array of objects with task and depends_on fields. "
+                "Every depends_on value must exactly match another task field in the array."
+            ),
+        },
+        {"role": "user", "content": f"Goal: {goal}"},
+    ]
+    for attempt in range(1, 4):
         try:
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
+                temperature=0,
             )
-            return response
+            return response.choices[0].message.content
         except RateLimitError:
             wait = 2 ** attempt
-            logging.warning("Rate limit hit, retrying in %d seconds (attempt %d/3)", wait, attempt)
+            print(f"Rate limit hit. Retrying in {wait} seconds.")
             time.sleep(wait)
-        except APIConnectionError:
-            print("Cannot reach the LiteLLM endpoint. Check that the service is running and LITELLM_BASE_URL is correct.")
-            sys.exit(1)
-        except OpenAIError as exc:
-            logging.error("OpenAI API error: %s", exc)
-            sys.exit(1)
-    print("Failed after multiple rate-limit retries. Please try again later.")
-    sys.exit(1)
+        except APIConnectionError as error:
+            raise RuntimeError("Cannot reach LiteLLM. Check the proxy.") from error
+        except OpenAIError as error:
+            raise RuntimeError(f"LiteLLM request failed: {error}") from error
+    raise RuntimeError("Failed after multiple rate-limit retries.")
 
-def generate_task_plan(client, model, goal):
-    """
-    Ask the LLM to break the goal into tasks with explicit dependencies.
-    Returns a list of dicts, each containing 'task' and 'depends_on'.
-    """
-    system_prompt = (
-        "You are a planning assistant. Break the following high-level goal into a list of smaller "
-        "tasks with clear dependencies. Return ONLY a JSON array. Each element must be an object "
-        "with exactly two fields: 'task' (string, task name) and 'depends_on' (array of strings, "
-        "names of tasks that must be completed before this one; empty if none). Do not include any "
-        "explanations or markdown formatting."
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Goal: {goal}"},
-    ]
-    response = call_with_backoff(client, model, messages)
-    content = response.choices[0].message.content.strip()
 
-    if content.startswith("```"):
-        content = "\n".join(content.splitlines()[1:])
-    if content.endswith("```"):
-        content = "\n".join(content.splitlines()[:-1])
-    content = content.strip()
+def parse_tasks(raw_text):
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = "\n".join(text.splitlines()[1:])
+    if text.endswith("```"):
+        text = "\n".join(text.splitlines()[:-1])
 
-    try:
-        task_list = json.loads(content)
-        if not isinstance(task_list, list):
-            raise ValueError("Response is not a JSON array")
-        for item in task_list:
-            if not isinstance(item, dict) or "task" not in item or "depends_on" not in item:
-                raise ValueError("Task item missing required fields")
-        return task_list
-    except (json.JSONDecodeError, ValueError) as err:
-        print("Failed to parse the LLM's task plan. The model may have returned invalid JSON.")
-        print("Try reformulating your goal or switching to a different model.")
-        logging.debug("Raw LLM response: %s", content)
-        sys.exit(1)
+    tasks = json.loads(text.strip())
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError("Plan must be a non-empty JSON array.")
+    for item in tasks:
+        if not isinstance(item, dict) or not isinstance(item.get("task"), str) or not isinstance(item.get("depends_on"), list):
+            raise ValueError("Each item must include task and depends_on.")
+    return tasks
 
-def build_dag(task_list):
-    """
-    Convert the task list into a dependency graph mapping task name to list of dependencies.
-    Validates that every mentioned dependency exists in the task list.
-    """
-    task_names = {item["task"] for item in task_list}
-    dag = {}
-    for item in task_list:
-        name = item["task"]
-        deps = item["depends_on"]
-        for dep in deps:
-            if dep not in task_names:
-                print(f"Error: Task '{name}' depends on '{dep}', but '{dep}' was not defined in the task list.")
-                print("The LLM has produced an inconsistent plan. Please try again.")
-                sys.exit(1)
-        dag[name] = deps
-    return dag
 
-def topological_sort(dag):
-    """
-    Perform a topological sort using Kahn's algorithm.
-    Returns an ordered list of task names. Exits if a cycle is detected.
-    """
-    in_degree = {node: 0 for node in dag}
-    for node, deps in dag.items():
-        for dep in deps:
-            in_degree[node] += 1
+def order_tasks(tasks):
+    names = {item["task"] for item in tasks}
+    graph = {name: [] for name in names}
+    in_degree = {name: 0 for name in names}
 
-    zero_queue = [node for node, degree in in_degree.items() if degree == 0]
-    sorted_tasks = []
+    for item in tasks:
+        for dependency in item["depends_on"]:
+            if dependency not in names:
+                raise ValueError(f"Undefined dependency: {dependency}")
+            graph[dependency].append(item["task"])
+            in_degree[item["task"]] += 1
 
-    while zero_queue:
-        current = zero_queue.pop(0)
-        sorted_tasks.append(current)
-        for node, deps in dag.items():
-            if current in deps:
-                in_degree[node] -= 1
-                if in_degree[node] == 0:
-                    zero_queue.append(node)
+    ready = deque([task for task, count in in_degree.items() if count == 0])
+    ordered = []
+    while ready:
+        task = ready.popleft()
+        ordered.append(task)
+        for next_task in graph[task]:
+            in_degree[next_task] -= 1
+            if in_degree[next_task] == 0:
+                ready.append(next_task)
 
-    if len(sorted_tasks) != len(dag):
-        print("Cycle detected in the task dependencies. The LLM's plan contains a circular dependency and cannot be executed.")
-        print("Please regenerate the plan with a different goal or model.")
-        sys.exit(1)
+    if len(ordered) != len(tasks):
+        raise ValueError("Cycle detected in task dependencies.")
+    return ordered
 
-    return sorted_tasks
-
-def execute_plan(ordered_tasks):
-    """Simulate execution of tasks in the given order, with a short artificial delay."""
-    for task in ordered_tasks:
-        logging.info("Starting task: %s", task)
-        time.sleep(1)
-        logging.info("Completed task: %s", task)
 
 def main():
-    """Entry point: load environment, validate, generate and execute the plan."""
-    load_dotenv()
-    check_environment()
-
+    require_config()
     model = os.getenv("MODEL_NAME")
-    print("Active model: " + model)
-
-    client = setup_llm_client()
-
     goal = os.getenv("GOAL")
-    if not goal:
-        goal = "Launch a client onboarding workflow for NosisTech LLC"
-        print("No GOAL environment variable set. Using demo goal: " + goal)
-    if len(goal) > 1000:
-        print("The GOAL exceeds 1000 characters. Please shorten it.")
-        sys.exit(1)
+    print(f"Active model: {model}")
+    print(f"Goal: {goal}")
 
-    logging.info("Generating task plan for goal.")
-    task_list = generate_task_plan(client, model, goal)
-    if not task_list:
-        print("The LLM returned an empty task list. Exiting.")
-        sys.exit(1)
+    client = OpenAI(
+        base_url=os.getenv("LITELLM_BASE_URL"),
+        api_key=os.getenv("LITELLM_API_KEY"),
+        timeout=60,
+    )
+    tasks = parse_tasks(ask_model(client, model, goal))
+    ordered = order_tasks(tasks)
 
-    dag = build_dag(task_list)
-    logging.info("DAG constructed with %d tasks", len(dag))
+    print("\nExecution order:")
+    for index, task in enumerate(ordered, start=1):
+        print(f"{index}. {task}")
 
-    ordered_tasks = topological_sort(dag)
-    logging.info("Execution order determined.")
-
-    execute_plan(ordered_tasks)
-    logging.info("All tasks completed successfully.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (RuntimeError, ValueError, json.JSONDecodeError) as error:
+        print(error)
+        sys.exit(1)

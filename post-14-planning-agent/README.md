@@ -21,7 +21,7 @@ AI-powered system.
    - LITELLM_BASE_URL: the URL of your LiteLLM proxy
    - MODEL_NAME: the model name LiteLLM will route to
    - LITELLM_API_KEY: the API key for your LiteLLM instance
-   - GOAL: the business goal you want to plan (leave empty to use the demo)
+   - GOAL: the business goal you want to plan
 3. Install dependencies:
    pip install -r requirements.txt
 4. Run the agent:
@@ -46,8 +46,8 @@ rebuilt the agent to be:
 
 - Model and provider agnostic: all configuration is environment-driven via LiteLLM
 - Secure by default: no hardcoded keys, no provider overrides
-- Pure Python: only the official OpenAI SDK, no LangChain or LangGraph
-- Production-ready: exponential backoff, input validation, graceful error handling
+- Small Python implementation: official OpenAI SDK plus python-dotenv, no LangChain or LangGraph
+- Practical safeguards: rate-limit backoff, input validation, graceful error handling
 - Real-world demo: sample goals reference NosisTech LLC
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
