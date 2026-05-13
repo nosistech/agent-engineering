@@ -9,66 +9,54 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent
+REQUIRED_ENV = ("LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "DATA_FILE_PATH")
 
 
-def load_env() -> None:
-    path = PROJECT_DIR / ".env"
-    if not path.exists():
+def load_env():
+    env_file = ROOT / ".env"
+    if not env_file.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
+
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
             os.environ.setdefault(key.strip(), value.strip())
 
 
-def require_env() -> None:
-    needed = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "DATA_FILE_PATH"]
-    missing = [key for key in needed if not os.getenv(key)]
-    if missing:
-        raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
-    print(f"[INFO] Active model: {os.getenv('MODEL_NAME')}")
-
-
-def project_path(value: str) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else PROJECT_DIR / path
-
-
-def load_rows(path: Path) -> list[dict[str, str]]:
-    with open(path, newline="", encoding="utf-8") as file:
+def read_csv(path):
+    path = Path(path)
+    path = path if path.is_absolute() else ROOT / path
+    with path.open(newline="", encoding="utf-8") as file:
         return list(csv.DictReader(file))
 
 
-def numeric_column(rows: list[dict[str, str]], column: str) -> list[tuple[int, float]]:
+def anomalies(rows, column, threshold):
     values = []
-    for index, row in enumerate(rows, start=1):
+    for row_number, row in enumerate(rows, start=1):
         try:
-            values.append((index, float(row[column])))
+            values.append((row_number, float(row[column])))
         except (KeyError, TypeError, ValueError):
             pass
+
     if not values:
         raise SystemExit(f"No numeric values found for column: {column}")
-    return values
 
-
-def detect_anomalies(rows: list[dict[str, str]], column: str, threshold: float) -> list[dict]:
-    values = numeric_column(rows, column)
     numbers = [value for _, value in values]
-    mean = statistics.mean(numbers)
     stdev = statistics.pstdev(numbers)
     if stdev == 0:
         return []
 
-    anomalies = []
-    for row_number, value in values:
-        z_score = (value - mean) / stdev
-        if abs(z_score) >= threshold:
-            anomalies.append({"row": row_number, "value": value, "z_score": round(z_score, 2)})
-    return anomalies
+    mean = statistics.mean(numbers)
+    return [
+        {"row": row, "value": value, "z_score": round((value - mean) / stdev, 2)}
+        for row, value in values
+        if abs((value - mean) / stdev) >= threshold
+    ]
 
 
-def regression(rows: list[dict[str, str]], x_column: str, y_column: str) -> dict:
+def regression(rows, x_column, y_column):
     pairs = []
     for row in rows:
         try:
@@ -76,22 +64,11 @@ def regression(rows: list[dict[str, str]], x_column: str, y_column: str) -> dict
         except (KeyError, TypeError, ValueError):
             pass
     if len(pairs) < 2:
-        raise SystemExit("Regression needs at least two numeric rows.")
+        raise SystemExit("The CSV needs at least two numeric rows for regression.")
 
     xs, ys = zip(*pairs)
-    x_mean = statistics.mean(xs)
-    y_mean = statistics.mean(ys)
-    x_var = sum((x - x_mean) ** 2 for x in xs)
-    if x_var == 0:
-        raise SystemExit(f"Column has no variance: {x_column}")
-
-    slope = sum((x - x_mean) * (y - y_mean) for x, y in pairs) / x_var
-    intercept = y_mean - slope * x_mean
-    predictions = [intercept + slope * x for x in xs]
-    total_error = sum((y - y_mean) ** 2 for y in ys)
-    residual_error = sum((y - pred) ** 2 for y, pred in zip(ys, predictions))
-    r_squared = 1 - residual_error / total_error if total_error else 0.0
-
+    slope, _ = statistics.linear_regression(xs, ys)
+    r_squared = statistics.correlation(xs, ys) ** 2
     return {
         "x_column": x_column,
         "y_column": y_column,
@@ -100,17 +77,25 @@ def regression(rows: list[dict[str, str]], x_column: str, y_column: str) -> dict
     }
 
 
-def call_llm(prompt: str) -> str:
-    payload = json.dumps(
+def ask_model(question, findings):
+    prompt = (
+        "You are a business analyst. Python already computed these statistics. "
+        "Do not invent more math, probabilities, or extra metrics. Explain the "
+        "findings with three short sections: Insight, Confidence, Next Steps.\n\n"
+        f"Business question: {question}\n"
+        f"Computed findings:\n{json.dumps(findings, indent=2)}"
+    )
+    body = json.dumps(
         {
             "model": os.getenv("MODEL_NAME"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
     ).encode("utf-8")
+
     request = Request(
         os.getenv("LITELLM_BASE_URL").rstrip("/") + "/chat/completions",
-        data=payload,
+        data=body,
         headers={
             "Authorization": "Bearer " + os.getenv("LITELLM_API_KEY"),
             "Content-Type": "application/json",
@@ -121,42 +106,39 @@ def call_llm(prompt: str) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
-def explain(question: str, findings: dict) -> str:
-    prompt = (
-        "You are a business analyst. Python already computed the statistics below. "
-        "Do not invent additional math. Explain the findings in plain English with "
-        "three short sections: Insight, Confidence, Next Steps.\n\n"
-        f"Business question: {question}\n"
-        f"Computed findings:\n{json.dumps(findings, indent=2)}"
-    )
-    return call_llm(prompt)
-
-
-def main() -> None:
+def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     load_env()
-    require_env()
 
-    rows = load_rows(project_path(os.getenv("DATA_FILE_PATH")))
+    missing = [key for key in REQUIRED_ENV if not os.getenv(key)]
+    if missing:
+        raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
+
+    rows = read_csv(os.getenv("DATA_FILE_PATH"))
     anomaly_column = os.getenv("ANOMALY_COLUMN", "revenue")
-    x_column = os.getenv("REGRESSION_X_COLUMN", "marketing_spend")
-    y_column = os.getenv("REGRESSION_Y_COLUMN", "revenue")
-    threshold = float(os.getenv("ANOMALY_Z_THRESHOLD", "3.0"))
+    findings = {
+        "row_count": len(rows),
+        "anomaly_column": anomaly_column,
+        "anomalies": anomalies(
+            rows,
+            anomaly_column,
+            float(os.getenv("ANOMALY_Z_THRESHOLD", "3.0")),
+        ),
+        "regression": regression(
+            rows,
+            os.getenv("REGRESSION_X_COLUMN", "marketing_spend"),
+            os.getenv("REGRESSION_Y_COLUMN", "revenue"),
+        ),
+    }
     question = os.getenv(
         "BUSINESS_QUESTION",
         "How does marketing spend relate to revenue, and are there unusual revenue days?",
     )
 
-    findings = {
-        "row_count": len(rows),
-        "anomaly_column": anomaly_column,
-        "anomalies": detect_anomalies(rows, anomaly_column, threshold),
-        "regression": regression(rows, x_column, y_column),
-    }
-
     print("STATISTICAL FINDINGS")
     print(json.dumps(findings, indent=2))
     print("\nANALYSIS RESULT")
-    print(explain(question, findings))
+    print(ask_model(question, findings))
 
 
 if __name__ == "__main__":
