@@ -221,8 +221,6 @@ __marimo__/
 # Project-generated demo artifacts
 post-01-tool-invocation-agent/outputs/
 post-05-async-standup-summarizer/reports/
-post-08-memory-augmented-agent/memory.json
-post-08-memory-augmented-agent/memory-test-*.json
 post-10-document-intelligence-agent/output/
 Post-20-Chain-of-Agents Orchestrator/outputs/
 post-21-conflict-resolution-agent/decisions.jsonl
