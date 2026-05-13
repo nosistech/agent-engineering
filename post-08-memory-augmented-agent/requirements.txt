@@ -1,3 +1,5 @@
-# Tested with Python 3.14
-litellm==1.83.7
-python-dotenv==1.0.1
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 8: Memory-Augmented Agent
+
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.
