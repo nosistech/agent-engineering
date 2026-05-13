@@ -2,79 +2,56 @@
 
 ## What this agent does
 
-The Market Data Agent is a focused financial data worker built by NosisTech LLC, a boutique
-AI governance and cloud security consultancy. It accepts a stock ticker symbol (e.g., AAPL)
-and retrieves the current price, trading volume, 52-week high/low, market capitalisation, and
-PE ratio from a configurable data source. The validated, real-world numbers are then passed to
-a language model through a LiteLLM proxy, which generates a plain-English summary suitable for
-a non-technical business professional.
+The Market Data Agent accepts a stock ticker symbol, fetches verified market
+data with `yfinance`, and sends those numbers to a language model through a
+LiteLLM-compatible OpenAI SDK client.
 
-Every financial figure in the output comes directly from the data provider, never from the
-language model. The model only summarizes the provided data. It does not invent, interpret, or
-add any numbers. This strict separation makes the agent's output safe for business use and easy
-to audit.
+The architecture lesson is compliance by separation: Python retrieves the
+financial figures, and the model only summarizes the verified data it receives.
+The model should not invent prices, market caps, PE ratios, or recommendations.
 
 ## Prerequisites
 
 - Python 3.11 or later
 - pip
-- A LiteLLM proxy running on a VPS or locally, reachable via HTTP (default: http://localhost:4000)
-- An LLM accessible through that proxy (any provider supported by LiteLLM)
+- A LiteLLM proxy running locally or on a VPS
+- A chat model reachable through that proxy
 
 ## Setup
 
-1. Clone this repository.
+1. Copy `.env.template` to `.env` and fill in your values:
 
-2. Copy `.env.template` to `.env` and fill in your values:
-   ```
+   ```bash
    cp .env.template .env
    ```
 
-3. Install dependencies:
-   ```
+2. Install dependencies:
+
+   ```bash
    pip install -r requirements.txt
    ```
 
-4. Run the agent with a ticker:
-   ```
+3. Run the agent with a ticker:
+
+   ```bash
    python agent.py AAPL
    ```
 
-If no ticker is given on the command line, you will be prompted to enter one.
+If no ticker is given on the command line, the script asks for one.
 
-## How to switch AI providers
+## Environment variables
 
-Change `MODEL_NAME` in your `.env` file to any model string recognised by your LiteLLM proxy,
-for example `gpt-4o`, `claude-sonnet-4-20250514`, `ollama/llama3`, or `deepseek/deepseek-chat`.
-No changes to the code are required.
-
-## How to switch data providers
-
-The agent supports two data sources:
-
-- `yfinance` (default, no extra API key needed)
-- `finnhub` (requires a free or paid Finnhub API key)
-
-To switch to Finnhub:
-
-1. Set `DATA_PROVIDER=finnhub` in `.env`
-2. Add your key as `FINNHUB_API_KEY=your_key_here`
-
-All other logic remains the same. The validated data structure is identical regardless of source.
+- `LITELLM_BASE_URL`: URL of your LiteLLM-compatible endpoint
+- `MODEL_NAME`: model route configured in LiteLLM
+- `LITELLM_API_KEY`: API key expected by your LiteLLM endpoint
+- `LITELLM_TIMEOUT`: request timeout in seconds
 
 ## What NosisTech changed from the original
 
-This agent was extracted from a LangGraph-based supervisor system and rebuilt as a standalone,
-single-responsibility worker. The original used LangChain, LangGraph, and state-graph constructs.
-All of those were removed in favour of plain Python functions and the openai Python SDK pointed
-at a LiteLLM proxy. Additional improvements include:
-
-- Pydantic validation of all market data before it reaches the language model
-- Startup environment variable checks that exit cleanly if required variables are missing
-- Ticker symbol validation before any API call is made
-- Resilient retries with exponential backoff on LLM rate-limit errors
-- User-friendly error messages throughout, no raw Python exceptions exposed
-
----
+- Reduced the example to one data provider: `yfinance`
+- Removed unused local `litellm`, Finnhub, and Pydantic dependencies
+- Kept ticker validation before the provider call
+- Kept verified Python data retrieval separate from model summarization
+- Added a clear source line so readers know where the market data came from
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
