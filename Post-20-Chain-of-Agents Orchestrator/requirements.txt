@@ -1,3 +1,5 @@
 # Tested with Python 3.11
-openai==2.30.0
-python-dotenv==1.0.1
+# NosisTech Agent Engineering -- Post 20: Chain-of-Agents Orchestrator
+
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.

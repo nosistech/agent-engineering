@@ -1,43 +1,46 @@
-# Market Intelligence Agent
+# Chain-of-Agents Orchestrator
 
-A multi-agent system that researches any company or topic and produces a plain-English intelligence report. Three specialist agents (news, financials, sentiment) gather data, a manager synthesizes the report, and built-in conflict detection flags contradictory findings.
+## What this agent does
 
-**How it works:** You supply a target (e.g., "NosisTech LLC") via command line or `.env` default. The agents call LiteLLM (must be running) sequentially, each writing to a JSONL memory log. The manager reads all findings, asks the model to detect contradictions, and generates a final report. If the conflict score exceeds your threshold, a standalone warning block appears after the report, not hidden inside it.
+This project demonstrates the smallest useful chain-of-agents pattern:
+
+1. Three specialist agents each inspect the same target from a different angle.
+2. Each specialist returns one focused finding.
+3. A manager agent receives all findings.
+4. The manager synthesizes one final report.
+5. The run is appended to a JSONL journal for audit history.
+
+The key architecture rule: the manager only uses findings from the current run. The journal is a permanent audit trail, not the manager's working memory.
 
 ## Prerequisites
 
 - Python 3.11 or later
-- A running LiteLLM proxy instance (or compatible HTTP endpoint)
-- Access credentials for at least one LLM provider configured in LiteLLM
+- A running LiteLLM endpoint
 
 ## Setup
 
-1. Clone the repository and navigate to the project folder.
-2. Copy `.env.template` to `.env` and fill in real values:
-   - `LITELLM_BASE_URL`: The URL of your LiteLLM proxy (e.g., `http://localhost:4000`)
-   - `MODEL_NAME`: The model name as known to LiteLLM (e.g., `deepseek-v4-pro` or `gemini/gemini-2.0-flash`)
-   - `LITELLM_API_KEY`: Your LiteLLM API key
-   - `MEMORY_LOG_PATH`: Where to save the JSONL log (default `outputs/memory_log.jsonl`)
-   - `CONFLICT_THRESHOLD`: Float between 0 and 1; conflicts above this value are flagged (default `0.5`)
-   - `DEFAULT_TARGET`: Fallback target if none provided via command line
-3. Install dependencies:
-   pip install -r requirements.txt
-4. Run the agent:
-   python agent.py "NosisTech LLC"
-   Omit the argument to use the default target from `.env`.
+1. Copy `.env.template` to `.env`.
+2. Fill in your LiteLLM base URL, model name, API key, optional default target, and optional journal path.
+3. Run the demo:
+
+```bash
+python agent.py "NosisTech LLC"
+```
+
+No package install is required. The agent uses only the Python standard library.
 
 ## How to switch AI providers
 
-Update `MODEL_NAME` in your `.env` file to any model supported by your LiteLLM configuration. Restart the agent. No code changes required.
+Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not need to change when you switch between supported providers.
 
 ## What NosisTech changed from the original
 
-- Replaced vendor SDKs and hardcoded model names with the OpenAI client connected to LiteLLM
-- All configuration via environment variables, nothing hardcoded
-- Exponential backoff retry on rate limits, up to 3 attempts
-- Graceful startup validation with clear missing variable reporting
-- Conflict transparency: contradictions above threshold appear in a standalone warning block, not buried in the report
-- Memory log directory created automatically if missing
-- Input validation on target string
+- Reduced the project to the core specialist-to-manager handoff.
+- Kept the JSONL journal as an audit trail.
+- Separated current-run working notes from historical journal records.
+- Removed LLM-based conflict scoring.
+- Removed retry and dependency layers that distracted from the chain pattern.
+- Removed third-party Python dependencies.
+- Kept LiteLLM-compatible configuration through its OpenAI-compatible HTTP endpoint.
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
