@@ -1,4 +1,4 @@
-# MIT License, Copyright 2025 VRSEN / Agency Swarm contributors
+# (c) 2026 NosisTech LLC. Original implementation using Agency Swarm.
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,7 +29,6 @@ researcher = Agent(
         "a 3-point structured research brief. Return only the brief, no additional commentary."
     ),
     model=MODEL,
-    temperature=0.7,
 )
 
 writer = Agent(
@@ -40,7 +39,6 @@ writer = Agent(
         "150-word summary capturing the key points. Output only the summary, no extra commentary."
     ),
     model=MODEL,
-    temperature=0.7,
 )
 
 ceo = Agent(
@@ -54,18 +52,17 @@ ceo = Agent(
         "Output the synthesis directly when done."
     ),
     model=MODEL,
-    temperature=0.7,
 )
 
 agency = Agency(
-    agency_chart=[
-        ceo,
-        [ceo, researcher],
-        [ceo, writer],
+    ceo,
+    communication_flows=[
+        ceo > researcher,
+        ceo > writer,
     ],
 )
 
 if __name__ == "__main__":
     topic = "AI governance trends in 2025"
-    final_output = agency.get_completion(topic)
-    print(final_output)
+    final_output = agency.get_response_sync(topic)
+    print(final_output.final_output)

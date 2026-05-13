@@ -225,3 +225,4 @@ post-10-document-intelligence-agent/output/
 Post-20-Chain-of-Agents Orchestrator/outputs/
 post-21-conflict-resolution-agent/decisions.jsonl
 post-24-autogen/coding/
+post-25-agency-swarm/settings.json
