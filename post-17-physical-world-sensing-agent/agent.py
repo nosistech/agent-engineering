@@ -1,302 +1,157 @@
 # MIT License, Copyright 2025 Packt
 
+import json
 import os
+import random
 import sys
 import time
-import json
-import yaml
-import numpy as np
-from dotenv import load_dotenv
-from openai import OpenAI
+from pathlib import Path
+from urllib.request import Request, urlopen
 
-# ──────────────────────────────────────────────
-#  Startup: environment and configuration
-# ──────────────────────────────────────────────
 
-REQUIRED_ENV_VARS = [
-    "LITELLM_BASE_URL",
-    "MODEL_NAME",
-    "LITELLM_API_KEY",
-    "ZONE_CONFIG_PATH",
-    "SENSOR_LOG_PATH",
-    "SIMULATION_CYCLES",
-    "CYCLE_INTERVAL_SECONDS",
-]
+PROJECT_DIR = Path(__file__).resolve().parent
 
-def validate_and_get_env():
-    """Validate all required environment variables and return them."""
-    missing = [var for var in REQUIRED_ENV_VARS if os.getenv(var) is None]
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def load_env() -> None:
+    path = PROJECT_DIR / ".env"
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def require_env() -> None:
+    needed = ["LITELLM_BASE_URL", "MODEL_NAME", "LITELLM_API_KEY", "ZONE_CONFIG_PATH", "SENSOR_LOG_PATH"]
+    missing = [key for key in needed if not os.getenv(key)]
     if missing:
-        print("ERROR: Missing required environment variables:")
-        for m in missing:
-            print(f"  - {m}")
-        print("Please set them in a .env file and try again.")
-        sys.exit(1)
-    return {var: os.getenv(var) for var in REQUIRED_ENV_VARS}
+        raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
+    print(f"[INFO] Active model: {os.getenv('MODEL_NAME')}")
 
-# ──────────────────────────────────────────────
-#  Zone configuration loading and validation
-# ──────────────────────────────────────────────
 
-ZONE_REQUIRED_FIELDS = [
-    "target_temp_min",
-    "target_temp_max",
-    "co2_limit_warning",
-    "co2_limit_critical",
-    "max_occupancy",
-    "deadband_degrees",
-]
+def project_path(value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else PROJECT_DIR / path
 
-def load_zone_config(path):
-    """Load and validate zone configuration from a YAML file."""
-    with open(path, "r") as f:
-        raw = yaml.safe_load(f)
-    if not isinstance(raw, dict):
-        print("ERROR: Zone configuration file must contain a mapping of zone names to settings.")
-        sys.exit(1)
-    validated = {}
-    for zone_name, zone_cfg in raw.items():
-        missing = [f for f in ZONE_REQUIRED_FIELDS if f not in zone_cfg]
-        if missing:
-            print(f"ERROR: Zone '{zone_name}' is missing required fields: {missing}")
-            sys.exit(1)
-        validated[zone_name] = zone_cfg
-    return validated
 
-# ──────────────────────────────────────────────
-#  Sensor simulation
-# ──────────────────────────────────────────────
+def load_zone_config(path: Path) -> dict:
+    zones = {}
+    current_zone = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line:
+            continue
+        if not line.startswith(" ") and line.endswith(":"):
+            current_zone = line[:-1]
+            zones[current_zone] = {}
+            continue
+        if current_zone and ":" in line:
+            key, value = line.strip().split(":", 1)
+            zones[current_zone][key] = float(value.strip())
+    return zones
 
-def simulate_sensor_reading(zone_name, zone_config):
-    """Generate a realistic sensor reading for a zone."""
-    target_mid = (zone_config["target_temp_min"] + zone_config["target_temp_max"]) / 2
-    temp = np.random.normal(loc=target_mid, scale=1.5)
 
-    occupancy = np.random.poisson(lam=zone_config["max_occupancy"] * 0.3)
-    occupancy = min(occupancy, zone_config["max_occupancy"])
-    base_co2 = 400
-    co2_per_person = 50
-    co2 = int(np.random.normal(loc=base_co2 + occupancy * co2_per_person, scale=30))
-
+def simulate_reading(zone: str, config: dict) -> dict:
+    target_mid = (config["target_temp_min"] + config["target_temp_max"]) / 2
+    max_occupancy = int(config["max_occupancy"])
+    occupancy = random.randint(0, max_occupancy)
     return {
-        "zone_name": zone_name,
-        "temperature": round(temp, 2),
-        "co2": co2,
+        "zone": zone,
+        "temperature": round(random.uniform(target_mid - 3, target_mid + 3), 1),
+        "co2": random.randint(400, 400 + occupancy * 60 + 300),
         "occupancy": occupancy,
-        "timestamp": time.time(),
     }
 
-# ──────────────────────────────────────────────
-#  Proportional control with deadband
-# ──────────────────────────────────────────────
 
-def apply_proportional_control(reading, zone_config):
-    """Compute HVAC and ventilation commands based on sensor reading."""
+def decide_controls(reading: dict, config: dict) -> dict:
     temp = reading["temperature"]
     co2 = reading["co2"]
-    deadband = zone_config["deadband_degrees"]
-    target_min = zone_config["target_temp_min"]
-    target_max = zone_config["target_temp_max"]
-    co2_warning = zone_config["co2_limit_warning"]
-    co2_critical = zone_config["co2_limit_critical"]
 
-    midpoint = (target_min + target_max) / 2
-    error = temp - midpoint
-    hvac_command = "NONE"
-    hvac_intensity = 0
-    reason_temp = ""
-
-    if abs(error) <= deadband:
-        reason_temp = f"Temperature within deadband (+-{deadband} degrees C of {midpoint} degrees C)."
+    if temp < config["target_temp_min"]:
+        hvac = "HEAT"
+    elif temp > config["target_temp_max"]:
+        hvac = "COOL"
     else:
-        effective_error = abs(error) - deadband
-        scale = 5.0
-        intensity = min(100, int((effective_error / scale) * 100))
-        hvac_intensity = intensity
+        hvac = "NONE"
 
-        if error > 0:
-            hvac_command = "COOL_HIGH" if intensity > 50 else "COOL_LOW"
-            reason_temp = (
-                f"Temperature {temp} degrees C exceeds target maximum {target_max} degrees C by "
-                f"{round(temp - target_max, 2)} degrees C. Cooling at {intensity} percent."
-            )
-        else:
-            hvac_command = "HEAT_HIGH" if intensity > 50 else "HEAT_LOW"
-            reason_temp = (
-                f"Temperature {temp} degrees C below target minimum {target_min} degrees C by "
-                f"{round(target_min - temp, 2)} degrees C. Heating at {intensity} percent."
-            )
+    ventilation = "INCREASE" if co2 > config["co2_limit_warning"] else "NORMAL"
+    return {"hvac": hvac, "ventilation": ventilation}
 
-    if co2 <= co2_warning:
-        vent_command = "NORMAL"
-        reason_co2 = f"CO2 level {co2} ppm within acceptable limits (limit: {co2_warning} ppm)."
-    elif co2 <= co2_critical:
-        vent_command = "INCREASED"
-        reason_co2 = f"CO2 level {co2} ppm elevated (above {co2_warning} ppm). Increasing ventilation."
-    else:
-        vent_command = "MAXIMUM"
-        reason_co2 = f"CO2 level {co2} ppm critical (above {co2_critical} ppm). Maximum ventilation active."
 
-    reason = f"{reason_temp} {reason_co2}".strip()
-
-    return {
-        "hvac_command": hvac_command,
-        "hvac_intensity": hvac_intensity,
-        "ventilation_command": vent_command,
-        "reason": reason,
-    }
-
-# ──────────────────────────────────────────────
-#  LLM report generation
-# ──────────────────────────────────────────────
-
-def build_facility_summary(all_zone_readings, all_zone_commands):
-    """Construct a structured text block for the LLM prompt."""
-    summary_lines = []
-    for zone_name in all_zone_readings:
-        reading = all_zone_readings[zone_name]
-        cmd = all_zone_commands[zone_name]
-        summary_lines.append(
-            f"Zone: {zone_name}\n"
-            f"  Temperature: {reading['temperature']} degrees C\n"
-            f"  CO2: {reading['co2']} ppm\n"
-            f"  Occupancy: {reading['occupancy']}\n"
-            f"  HVAC Command: {cmd['hvac_command']} ({cmd['hvac_intensity']} percent)\n"
-            f"  Ventilation: {cmd['ventilation_command']}\n"
-            f"  Decision Reason: {cmd['reason']}\n"
-        )
-    return "\n".join(summary_lines)
-
-def generate_facility_report(summary_text, client, model_name):
-    """Call LLM via LiteLLM to produce a plain-English facility report."""
-    system_prompt = (
-        "You are a facilities management AI assistant for NosisTech LLC. "
-        "Given the sensor data and control decisions below, write a concise "
-        "plain-English status report for a non-technical facilities manager. "
-        "Respond with the report only. No preamble. No reasoning. No explanation "
-        "of your thought process. Start directly with the report content. "
-        "Highlight any urgent alerts and recommend any necessary actions. "
-        "Keep the report under 200 words."
-    )
-    max_attempts = 3
-    backoff = 1
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": summary_text},
-                ],
-                temperature=0.3,
-                max_tokens=800,
-                stream=False,
-            )
-            message = response.choices[0].message
-            content = message.content or ""
-            reasoning = getattr(message, "reasoning_content", None) or ""
-            report = content.strip() if content.strip() else reasoning.strip()
-            # Strip DeepSeek chain-of-thought preamble if present
-            lines = report.splitlines()
-            clean_lines = []
-            preamble_keywords = ("we are asked", "the data", "i need", "let me", "let's", "first,", "i'll", "we need", "looking at", "the report", "consolidate", "i'll write", "i will", "let's parse", "i should", "so i'll", "so the report")
-            collecting = False
-            for line in lines:
-                if collecting:
-                    clean_lines.append(line)
-                elif line.strip() and not line.strip().lower().startswith(preamble_keywords):
-                    collecting = True
-                    clean_lines.append(line)
-            report = "\n".join(clean_lines).strip() if clean_lines else report
-            return report
-        except Exception as e:
-            error_str = str(e).lower()
-            is_rate_limit = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
-            if is_rate_limit:
-                if attempt < max_attempts:
-                    print(f"Rate limited. Retrying in {backoff}s (attempt {attempt}/{max_attempts})...")
-                    time.sleep(backoff)
-                    backoff *= 2
-                else:
-                    print("ERROR: Rate limit exceeded after multiple attempts. Exiting.")
-                    sys.exit(1)
-            elif "connection" in error_str or "connect" in error_str:
-                print("ERROR: Unable to reach LiteLLM endpoint. Please verify LITELLM_BASE_URL and network connectivity.")
-                sys.exit(1)
-            else:
-                print(f"ERROR: {e}")
-                sys.exit(1)
-
-# ──────────────────────────────────────────────
-#  Logging
-# ──────────────────────────────────────────────
-
-def log_cycle(cycle_data, log_path):
-    """Append a structured JSON record to the sensor log file."""
-    with open(log_path, "a") as f:
-        f.write(json.dumps(cycle_data) + "\n")
-
-# ──────────────────────────────────────────────
-#  Main simulation loop
-# ──────────────────────────────────────────────
-
-def main():
-    """Run the physical world sensing agent simulation."""
-    load_dotenv()
-    env = validate_and_get_env()
-
-    print(f"Active Model: {env['MODEL_NAME']}")
-
-    zone_configs = load_zone_config(env["ZONE_CONFIG_PATH"])
-    zone_names = list(zone_configs.keys())
-
-    client = OpenAI(
-        base_url=env["LITELLM_BASE_URL"],
-        api_key=env["LITELLM_API_KEY"],
-    )
-
-    num_cycles = int(env["SIMULATION_CYCLES"])
-    interval = float(env["CYCLE_INTERVAL_SECONDS"])
-    log_path = env["SENSOR_LOG_PATH"]
-
-    for cycle in range(1, num_cycles + 1):
-        print(f"\n{'=' * 40}\nCycle {cycle}/{num_cycles}\n{'=' * 40}")
-
-        readings = {}
-        for name in zone_names:
-            readings[name] = simulate_sensor_reading(name, zone_configs[name])
-
-        commands = {}
-        for name in zone_names:
-            commands[name] = apply_proportional_control(readings[name], zone_configs[name])
-
-        summary = build_facility_summary(readings, commands)
-        report = generate_facility_report(summary, client, env["MODEL_NAME"])
-
-        cycle_record = {
-            "cycle": cycle,
-            "timestamp": time.time(),
-            "readings": {k: {**v, "occupancy": int(v["occupancy"])} for k, v in readings.items()},
-            "commands": commands,
-            "llm_report": report,
+def call_llm(prompt: str) -> str:
+    payload = json.dumps(
+        {
+            "model": os.getenv("MODEL_NAME"),
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
         }
-        log_cycle(cycle_record, log_path)
+    ).encode("utf-8")
+    request = Request(
+        os.getenv("LITELLM_BASE_URL").rstrip("/") + "/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": "Bearer " + os.getenv("LITELLM_API_KEY"),
+            "Content-Type": "application/json",
+        },
+    )
+    with urlopen(request, timeout=60) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"].strip()
 
-        print("Zone States and Commands:")
-        for name in zone_names:
-            r = readings[name]
-            c = commands[name]
+
+def narrate(cycle: dict) -> str:
+    prompt = (
+        "You are a facilities assistant. Turn this sensor/control data into a concise "
+        "plain-English report for a non-technical facilities manager. Output the report only.\n\n"
+        + json.dumps(cycle, indent=2)
+    )
+    return call_llm(prompt)
+
+
+def append_log(cycle: dict) -> None:
+    path = project_path(os.getenv("SENSOR_LOG_PATH"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as file:
+        file.write(json.dumps(cycle) + "\n")
+
+
+def run_cycle(zones: dict) -> dict:
+    zone_results = []
+    for zone, config in zones.items():
+        reading = simulate_reading(zone, config)
+        controls = decide_controls(reading, config)
+        zone_results.append({"reading": reading, "controls": controls})
+
+    cycle = {"timestamp": time.time(), "zones": zone_results}
+    cycle["report"] = narrate(cycle)
+    append_log(cycle)
+    return cycle
+
+
+def main() -> None:
+    load_env()
+    require_env()
+    zones = load_zone_config(project_path(os.getenv("ZONE_CONFIG_PATH")))
+    cycles = int(os.getenv("SIMULATION_CYCLES", "2"))
+
+    for index in range(1, cycles + 1):
+        print(f"\n=== Cycle {index}/{cycles} ===")
+        cycle = run_cycle(zones)
+        for zone in cycle["zones"]:
+            reading = zone["reading"]
+            controls = zone["controls"]
             print(
-                f"  {name}: "
-                f"Temp={r['temperature']} C, CO2={r['co2']} ppm, Occ={r['occupancy']} | "
-                f"HVAC={c['hvac_command']} at {c['hvac_intensity']} pct, Vent={c['ventilation_command']}"
+                f"{reading['zone']}: {reading['temperature']} C, "
+                f"CO2 {reading['co2']} ppm, HVAC {controls['hvac']}, "
+                f"Ventilation {controls['ventilation']}"
             )
-        print(f"\nFacility Report:\n{report}")
+        print("\nFacility Report:")
+        print(cycle["report"])
 
-        if cycle < num_cycles:
-            time.sleep(interval)
-
-    print("\nSimulation complete.")
 
 if __name__ == "__main__":
     main()

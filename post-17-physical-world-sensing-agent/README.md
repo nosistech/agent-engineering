@@ -2,49 +2,42 @@
 
 ## What it does
 
-Monitors a commercial office building by reading simulated sensor data across
-multiple physical zones. For each zone it measures temperature, CO2, and
-occupancy. Using proportional control logic with deadband hysteresis built in
-pure Python, the agent decides what HVAC and ventilation commands to issue. It
-then calls an AI model via LiteLLM to generate a plain-English facility status
-report a non-technical facilities manager can read and act on. Every cycle is
-logged to a structured JSONL file for audit purposes.
+This project demonstrates a small physical-world agent pattern:
+
+1. Simulate temperature, CO2, and occupancy readings for facility zones.
+2. Apply deterministic control rules for HVAC and ventilation.
+3. Ask the model to narrate the resulting facility status in plain English.
+4. Append the run to a JSONL sensor log for audit history.
+
+The model does not control the building. Python rules decide the commands. The model only explains the current state to a facilities manager.
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- A running LiteLLM proxy (or any OpenAI-compatible endpoint)
-- An API key for your chosen model provider
+- Python 3.11 or later
+- A running LiteLLM endpoint
 
 ## Setup
 
-1. Clone the repository and navigate to this folder.
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Copy .env.template to .env and fill in your values.
-4. Adjust zone_config.yaml to match your facility zones and targets.
-5. Run the agent:
-   python agent.py
+1. Copy `.env.template` to `.env`.
+2. Fill in your LiteLLM base URL, model name, API key, zone config path, and sensor log path.
+3. Run the agent:
+
+```bash
+python agent.py
+```
+
+No package install is required. The agent uses only the Python standard library.
 
 ## How to switch providers
 
-Change MODEL_NAME in your .env file to any LiteLLM-supported model identifier.
-The agent routes through LiteLLM with no code changes required. Tested with
-deepseek-v4-pro and gemini/gemini-2.0-flash.
+Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not need to change when you switch between supported providers.
 
 ## What NosisTech changed from the original
 
-- Stripped all local ML model loading (torch, transformers). Replaced with
-  direct LiteLLM calls via the OpenAI SDK.
-- Replaced hardcoded zone configuration dictionary with an external YAML file.
-  Path is set in .env, not hardcoded.
-- Added proper deadband hysteresis so minor temperature fluctuations do not
-  trigger unnecessary HVAC cycles.
-- Added structured JSONL logging for every simulation cycle.
-- Removed vision agent and audio agent. This build focuses solely on the
-  physical sensor and building control logic.
-- Added graceful failure handling, rate limit retries with exponential backoff,
-  and environment variable validation on startup.
-- All configuration in .env. Zero hardcoded secrets, paths, or model names.
+- Reduced the project to sensor input, rule-based control, model narration, and audit logging.
+- Removed proportional control, deadband logic, and CO2 severity tiers.
+- Removed numpy, PyYAML, OpenAI SDK, dotenv, and retry scaffolding.
+- Kept external `zone_config.yaml` so the building layout remains visible.
+- Kept JSONL sensor logging as the audit trail.
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
