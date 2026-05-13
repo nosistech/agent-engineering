@@ -1,51 +1,57 @@
-# Conflict Resolution Agent — NosisTech LLC (Post 21, Block 4)
+# Conflict Resolution Agent
 
 ## What this agent does
 
-A multi-agent system that processes business requests (insurance claims) by
-routing each claim through two independent reviewer agents with different
-perspectives. A conflict detector compares their confidence scores. If they
-agree within a configurable threshold and confidence is high enough, the
-decision is made automatically. If they disagree, the agent halts and asks a
-human to type APPROVE or REJECT before proceeding. Every decision is written
-to a decisions.jsonl audit log.
+This project demonstrates a small multi-agent human-checkpoint pattern:
+
+1. Two independent reviewer agents evaluate the same claim.
+2. Their recommendations and confidence scores are compared.
+3. Aligned, high-confidence reviews can be auto-decided.
+4. Conflicts or low-confidence reviews become `HUMAN_REVIEW_REQUIRED`.
+5. Every decision is appended to a JSONL audit log.
+
+The core lesson is not claims processing. The lesson is how independent agent reviews create a checkpoint before a risky decision moves forward.
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- A LiteLLM proxy running and accessible
-- A .env file with all required variables filled in
+- Python 3.11 or later
+- A running LiteLLM endpoint
 
 ## Setup
 
-1. Copy the four files into your project folder.
-2. Install dependencies:
+1. Copy `.env.template` to `.env`.
+2. Fill in your LiteLLM base URL, model name, API key, thresholds, and optional audit log path.
+3. Run the agent:
 
-   pip install -r requirements.txt
+```bash
+python agent.py
+```
 
-3. Copy .env.template to .env and fill in your values:
+No package install is required. The agent uses only the Python standard library.
 
-   LITELLM_BASE_URL=http://localhost:4000
-   MODEL_NAME=your-model-name
-   LITELLM_API_KEY=your-api-key
+## Human review
 
-4. Run the agent:
+By default, escalated claims are marked `HUMAN_REVIEW_REQUIRED` so the demo never blocks waiting for terminal input. To simulate a human override, set:
 
-   python agent.py
+```bash
+HUMAN_REVIEW_DECISION=APPROVE
+```
+
+or:
+
+```bash
+HUMAN_REVIEW_DECISION=REJECT
+```
 
 ## How to switch providers
 
-Change MODEL_NAME in your .env file to any model your LiteLLM proxy supports.
-No code changes needed.
+Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not need to change when you switch between supported providers.
 
 ## What NosisTech changed from the original
 
-- Removed the custom LiveLLM wrapper and all provider-specific SDK imports.
-- Replaced hardcoded model strings and thresholds with environment variables.
-- Added startup validation, claim field validation, safe JSON parsing,
-  rate-limit retry logic, and a JSONL audit log.
-- Removed the bare raise in the retry helper to prevent raw exceptions
-  surfacing to the user.
-- All sample data uses NosisTech LLC as the example organization.
+- Reduced duplicate reviewer functions to one parameterized reviewer.
+- Removed OpenAI SDK, dotenv, retry scaffolding, and interactive terminal blocking.
+- Kept the independent reviews, conflict check, human checkpoint, and audit log.
+- Kept LiteLLM-compatible configuration through its OpenAI-compatible HTTP endpoint.
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
