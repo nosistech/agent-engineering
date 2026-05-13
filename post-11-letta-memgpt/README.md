@@ -4,7 +4,7 @@
 
 This agent demonstrates the core architectural pattern behind Letta (formerly MemGPT): a conversational AI that manages its own memory across sessions without human intervention. Unlike a standard chatbot that forgets everything when the conversation ends, this agent maintains a core memory block of key facts about the user and an archival memory log of past interactions. Before every response, it searches its own memory for relevant context and injects it into the prompt automatically.
 
-When the agent learns something new, it writes that fact to disk and optionally updates its core memory profile. The result is a digital assistant that compounds knowledge over time rather than starting from zero on every conversation. All memory is stored in plain JSON and JSONL files on your machine. No external database, no server, no cloud dependency required.
+When the agent learns something new, it writes that fact to disk and optionally updates its core memory profile. The result is a digital assistant that compounds knowledge over time rather than starting from zero on every conversation. All memory is stored in plain JSON and JSONL files on your machine. No external memory database is required, while model calls still route through your configured LiteLLM endpoint.
 
 ## Prerequisites
 
@@ -73,10 +73,10 @@ Improvements added beyond the original:
 - Input validation: empty messages prompt again without an API call
 - Startup check lists all missing environment variables before any API call is made
 - Active model name printed on startup so you always know which provider is running
-- Exponential backoff on rate limits: 5, 10, and 20 second waits, up to 3 retries
+- Short retry loop on temporary rate-limit, timeout, or connection issues
 - MEMORY_UPDATE parser sanitizes whitespace-only entries before writing to disk
 - Words under 3 characters excluded from archival search queries to reduce noise
-- Core memory auto-updated when a fact contains name:, role:, preference:, or company:
+- Core memory auto-updated when a memory fact starts with name:, role:, preference:, or company:
 - data/ directory created automatically on first run, no manual setup required
 
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.
