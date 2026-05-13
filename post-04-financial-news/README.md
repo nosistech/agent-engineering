@@ -3,7 +3,7 @@
 ## What this agent does
 Accepts a stock ticker symbol, fetches recent news headlines and article summaries
 from the Alpha Vantage News and Sentiment API, formats the content, and passes it
-to an LLM via LiteLLM to produce a plain-English briefing. The briefing contains
+to an LLM via LiteLLM to produce a clear briefing. The briefing contains
 an overall sentiment label, a three-sentence summary, and the top three headlines.
 The agent summarizes only the content it retrieves. It never generates financial
 opinions, price predictions, or investment recommendations from its own knowledge.
@@ -28,7 +28,7 @@ opinions, price predictions, or investment recommendations from its own knowledg
 2. Restart the agent. No code changes required.
 
 ## What NosisTech changed from the original
-- Removed LangChain and LangGraph entirely. Replaced with direct openai SDK pointed at LiteLLM.
+- Removed LangChain and LangGraph entirely. Replaced with the direct OpenAI SDK pointed at LiteLLM.
 - Removed third-party news wrappers. Uses direct requests calls to Alpha Vantage.
 - Added environment variable validation on startup with clear missing-variable messages.
 - Added ticker validation: uppercase enforcement, alphanumeric check, 1-5 character limit.
