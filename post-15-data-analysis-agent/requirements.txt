@@ -1,5 +1,5 @@
-# Tested with Python 3.14
-pandas==2.2.3
-numpy==2.2.5
-python-dotenv==1.0.1
-litellm==1.83.7
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 15: Data Analysis Agent
+
+# No Python package dependencies.
+# Requires a running LiteLLM-compatible HTTP endpoint.
