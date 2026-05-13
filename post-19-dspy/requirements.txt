@@ -1,3 +1,4 @@
-# Tested with Python 3.14
+# Tested with Python 3.11
+# NosisTech Agent Engineering -- Post 19: DSPy Support Ticket Router
+
 dspy==2.5.43
-python-dotenv==1.1.1
