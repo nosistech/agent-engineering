@@ -14,7 +14,7 @@ framework, routed through LiteLLM for full provider flexibility.
 
 ## Prerequisites
 
-- Python 3.11 or later
+- Python 3.11 recommended. The pinned CrewAI version does not support Python 3.14.
 - pip for package installation
 - A running LiteLLM proxy with an API key
 
