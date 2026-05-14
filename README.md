@@ -39,6 +39,7 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-25-agency-swarm` | Agency Swarm orchestration |
 | `post-28-explainable-agent` | Explainability, confidence, and counterfactuals |
 | `post-29-compliance-driven-agent` | Compliance-driven software engineering |
+| `post-31-llm-guard` | LLM safety gateway |
 | `post-35-prompt-injection-defense-agent` | Prompt injection screening |
 | `post-36-hallucination-detection-agent` | Claim-level hallucination review |
 | `post-40-gdpr-ccpa-compliance-agent` | GDPR and CCPA privacy screening |
