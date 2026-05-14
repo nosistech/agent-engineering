@@ -39,6 +39,7 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-25-agency-swarm` | Agency Swarm orchestration |
 | `post-28-explainable-agent` | Explainability, confidence, and counterfactuals |
 | `post-29-compliance-driven-agent` | Compliance-driven software engineering |
+| `post-30-ai-act-risk-categorization-agent` | EU AI Act risk categorization |
 
 ## Quick Start
 
