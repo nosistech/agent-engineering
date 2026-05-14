@@ -31,13 +31,14 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-17-physical-world-sensing-agent` | Sensor simulation and action policy |
 | `post-18-langflow` | Langflow exported workflow and API client |
 | `post-19-dspy` | DSPy prediction and optimization |
-| `Post-20-Chain-of-Agents Orchestrator` | Sequential specialist agents |
+| `post-20-chain-of-agents-orchestrator` | Sequential specialist agents |
 | `post-21-conflict-resolution-agent` | Dual-review conflict escalation |
 | `post-22-financial-advisory` | Market/news advisory briefing |
 | `post-23-crewai` | CrewAI research crew |
 | `post-24-autogen` | AutoGen examples |
 | `post-25-agency-swarm` | Agency Swarm orchestration |
 | `post-28-explainable-agent` | Explainability, confidence, and counterfactuals |
+| `post-29-compliance-driven-agent` | Compliance-driven software engineering |
 
 ## Quick Start
 
