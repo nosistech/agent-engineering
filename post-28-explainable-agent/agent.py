@@ -3,13 +3,12 @@
 import json
 import os
 import sys
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 APPLICATION = {
     "application_id": "APP-DEMO",
@@ -29,12 +28,13 @@ FEATURES = [
 
 
 def load_env() -> None:
-    path = os.path.join(PROJECT_DIR, ".env")
-    if not os.path.exists(path):
+    path = Path(__file__).with_name(".env")
+    if not path.exists():
         return
-    for line in open(path, encoding="utf-8"):
-        if "=" in line and not line.lstrip().startswith("#"):
-            key, value = line.strip().split("=", 1)
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and "=" in line and not line.startswith("#"):
+            key, value = line.split("=", 1)
             os.environ.setdefault(key, value)
 
 
@@ -63,8 +63,7 @@ def call_llm(prompt: str) -> str:
         },
     )
     with urlopen(request, timeout=60) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    return data["choices"][0]["message"]["content"].strip()
+        return json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
 
 
 def score_feature(value: float, target: float, higher_is_better: bool) -> float:
