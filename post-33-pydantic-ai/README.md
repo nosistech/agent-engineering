@@ -1,4 +1,4 @@
-﻿## What This Agent Does
+## What This Agent Does
 
 The Pydantic-AI Governance Decision Agent reviews fictional enterprise AI use cases and returns a structured governance decision: APPROVE, REVIEW, or REJECT. It demonstrates the core architectural pattern behind Pydantic-AI: pass controlled context into the model, define a strict output schema, validate the response with Pydantic, and retry when the model returns malformed output.
 
@@ -23,6 +23,8 @@ The agent evaluates three fictional risk tiers: an internal meeting summarizer, 
 Change `MODEL_NAME` in `.env` to any model supported by your LiteLLM proxy. No code changes are required.
 
 ## What NosisTech Changed from the Original
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
 
 The original Pydantic-AI framework provides an agent runtime, typed dependency injection, structured outputs, tool decorators, validation retries, provider adapters, durable execution, graphs, evals, and integrations. This rebuild keeps only the architecture lesson needed for the post. It replaces the framework runtime with direct Python functions, a LiteLLM-routed OpenAI-compatible client, Pydantic input and output models, and a small retry loop.
 

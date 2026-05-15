@@ -30,6 +30,8 @@ Change `MODEL_NAME` in `.env` to another model route configured in your LiteLLM 
 
 ## 5. What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Replaced LangGraph orchestration with a plain Python loop and ordinary functions.
 - Replaced LangChain model wrappers with direct HTTP calls to the LiteLLM proxy.
 - Removed hardcoded model identifiers, URLs, and policy strings from the code.

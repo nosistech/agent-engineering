@@ -28,6 +28,8 @@ opinions, price predictions, or investment recommendations from its own knowledg
 2. Restart the agent. No code changes required.
 
 ## What NosisTech changed from the original
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
 - Removed LangChain and LangGraph entirely. Replaced with the direct OpenAI SDK pointed at LiteLLM.
 - Removed third-party news wrappers. Uses direct requests calls to Alpha Vantage.
 - Added environment variable validation on startup with clear missing-variable messages.

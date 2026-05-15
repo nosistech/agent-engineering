@@ -49,6 +49,8 @@ the code does not need to change when you switch between supported providers.
 
 ## What NosisTech Changed from the Original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Reduced the project to the core planner/researcher/writer/editor architecture.
 - Removed LangChain, provider-specific clients, the OpenAI SDK, dotenv, and retry scaffolding.
 - Replaced package dependencies with a standard-library HTTP call.

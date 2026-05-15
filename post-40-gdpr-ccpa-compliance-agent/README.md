@@ -82,4 +82,12 @@ Both providers identified the health analytics and ad sharing scenarios as `HIGH
 
 ## License
 
+## What NosisTech Changed from the Original
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
+- Removed production infrastructure, provider-specific wiring, and framework-specific complexity not needed for this learning build.
+- Replaced the original system with a small LiteLLM-compatible educational pattern that can be inspected locally.
+- Kept only the architecture needed to demonstrate the specific agent pattern in this post.
+
 (c) 2026 NosisTech LLC. Licensed under CC BY 4.0. Use freely, just credit us.

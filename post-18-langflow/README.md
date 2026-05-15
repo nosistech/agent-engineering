@@ -33,6 +33,8 @@ No package install is required. The client uses only the Python standard library
 
 ## What NosisTech Changed from the Original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Kept the exported `rfp_analyzer_flow.json` as the visual workflow artifact.
 - Reduced the Python side to a small dependency-free REST client.
 - Removed `requests`, `python-dotenv`, and extra error scaffolding.

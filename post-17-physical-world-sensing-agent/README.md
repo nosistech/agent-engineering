@@ -34,6 +34,8 @@ Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not 
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Reduced the project to sensor input, rule-based control, model narration, and audit logging.
 - Removed proportional control, deadband logic, and CO2 severity tiers.
 - Removed numpy, PyYAML, OpenAI SDK, dotenv, and retry scaffolding.

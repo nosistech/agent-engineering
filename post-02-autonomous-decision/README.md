@@ -48,6 +48,8 @@ proxy. The agent will use the new provider without code changes.
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Replaced direct API imports with a LiteLLM-compatible OpenAI SDK client.
 - Removed hardcoded secrets, model names, and file paths.
 - Added startup environment validation, input sanitization, and rate-limit

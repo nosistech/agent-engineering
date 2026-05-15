@@ -1,4 +1,4 @@
-﻿# Browser Use Web Task Planner
+# Browser Use Web Task Planner
 
 ## What This Agent Does
 
@@ -42,6 +42,8 @@ python agent.py
 Change `MODEL_NAME` in your `.env` file to any model your LiteLLM gateway supports. No code changes are required. The agent can run with any provider LiteLLM supports when your gateway is configured for that provider.
 
 ## What NosisTech Changed from Browser Use
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
 
 - Removed live browser-control framework imports.
 - Replaced live browser sessions with static fictional page-state dictionaries.

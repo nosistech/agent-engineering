@@ -35,6 +35,8 @@ Change `MODEL_NAME` in `.env` to the model name configured in your LiteLLM proxy
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 Griptape provides a full framework with agents, pipelines, workflows, tasks, drivers, tools, memory, and retrieval components. This rebuild keeps the architectural lesson and removes the framework dependency. The result is a small Python implementation that uses plain functions for tasks, a local list for the pipeline, an in-memory dictionary for task memory, and the OpenAI-compatible client routed through LiteLLM.
 
 The original framework supports many production patterns. This demo focuses only on the part needed for Post 32: disciplined task flow, local policy matching, off-prompt task references, JSON decision validation, and model-agnostic execution.

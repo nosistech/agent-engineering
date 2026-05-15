@@ -46,6 +46,8 @@ This agent uses LiteLLM as its unified gateway. To switch providers, update MODE
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 The original version of this agent relied heavily on the LangChain framework. NosisTech LLC rebuilt it from the ground up to remove that dependency entirely.
 
 - LangChain removed: all langchain, langchain_openai, langchain_community, and langchain_huggingface imports were stripped. The agent uses the openai Python SDK pointed at a LiteLLM proxy for chat, and httpx calls to the LiteLLM embeddings endpoint for retrieval.

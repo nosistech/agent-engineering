@@ -56,6 +56,8 @@ The Python code remains identical regardless of whether you are running DeepSeek
 
 ## What NosisTech changed from the original Letta architecture
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 The upstream Letta project is a production platform with a FastAPI server, PostgreSQL with pgvector, Docker containerization, LangChain tool integrations, and sandboxed code execution. This rebuild strips or replaces those components for a standalone, inspectable implementation:
 
 | Original Letta component | NosisTech replacement |

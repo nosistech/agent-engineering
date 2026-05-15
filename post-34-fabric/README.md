@@ -1,4 +1,4 @@
-﻿# Fabric Pattern Runner
+# Fabric Pattern Runner
 
 ## What This Agent Does
 
@@ -27,6 +27,8 @@ To preview prompts without spending API credits, set `DRY_RUN=true` in `.env` be
 Change `MODEL_NAME` in `.env` to any model string supported by your LiteLLM proxy. No code changes are required. LiteLLM handles provider routing based on the model name you supply.
 
 ## What NosisTech Changed from the Original
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
 
 Fabric is a large open-source project written in Go. It includes a CLI, REST API server, Svelte web UI, YouTube transcript extraction, web scraping, SQLite storage, shell installer scripts, and a large library of community-contributed pattern files. None of those components are recreated here.
 

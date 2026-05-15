@@ -41,6 +41,8 @@ Edit `MODEL_NAME` in `.env`. Because the agent calls LiteLLM, the code does not 
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Reduced the project to the core internal-first, web-fallback routing pattern.
 - Removed SQLite memory because memory is covered in Posts 8 and 11.
 - Removed embeddings and cosine similarity because retrieval is covered in Post 9.

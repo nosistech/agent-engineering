@@ -29,6 +29,8 @@ Change `MODEL_NAME` in your `.env` file to any model configured in your LiteLLM 
 
 ## What NosisTech Changed from the Original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 Promptfoo is a large TypeScript testing platform with a CLI, YAML configuration, provider integrations, red-team plugins, reports, tracing, and dashboard workflows.
 
 NosisTech rebuilt only the core evaluation loop as a small Python agent: define test cases, call a model, run deterministic assertions, and print a compact report. This version removes the Promptfoo CLI, YAML parsing, plugin system, web dashboard, telemetry, tracing, LangChain examples, LangGraph examples, and provider-specific setup. LiteLLM handles provider routing through environment variables.

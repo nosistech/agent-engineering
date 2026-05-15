@@ -29,6 +29,8 @@ Change `MODEL_NAME` in your `.env` file to any model name configured in your Lit
 
 ## What NosisTech Changed from the Original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 The original source demonstrated verification inside a larger tri-agent analytics pipeline. It also included local model dependencies, provider-specific setup, notebook execution, statistical analysis, chart recommendations, and a problem-solving fallback loop.
 
 NosisTech rebuilt the verification gate as a small LiteLLM-native agent. This version keeps the architecture focused on one lesson: the model extracts the claim, then deterministic Python logic checks that claim against trusted reference data. The rebuild removes local model dependencies, provider-specific SDK setup, heavyweight data analysis libraries, charting logic, and the full tri-agent pipeline.

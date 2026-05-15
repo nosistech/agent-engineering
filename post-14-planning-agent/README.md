@@ -4,7 +4,7 @@
 
 The Planning Agent turns a high-level business goal into a dependency-ordered,
 executable sequence of tasks. It uses a DAG (directed acyclic graph) and
-topological sort to guarantee that every task runs only after its prerequisites
+topological sort so every task runs only after its prerequisites
 are complete. This is the foundation of reliable project planning inside an
 AI-powered system.
 
@@ -38,6 +38,8 @@ Examples:
 - MODEL_NAME=gpt-4o
 
 ## What NosisTech changed from the original
+
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
 
 The original Packt Chapter 5 implementation was tightly coupled to a single
 model and hardcoded the Anthropic provider. It used simulated execution with

@@ -56,6 +56,8 @@ same way.
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Replaced framework-heavy orchestration with a small Python pipeline.
 - Uses the OpenAI SDK pointed at a LiteLLM proxy instead of importing the LiteLLM Python package.
 - Loads standup updates from a simple JSON file.

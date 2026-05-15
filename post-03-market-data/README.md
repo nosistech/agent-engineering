@@ -48,6 +48,8 @@ If no ticker is given on the command line, the script asks for one.
 
 ## What NosisTech changed from the original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Reduced the example to one data provider: `yfinance`
 - Removed unused local `litellm`, Finnhub, and Pydantic dependencies
 - Kept ticker validation before the provider call

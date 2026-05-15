@@ -42,6 +42,8 @@ LiteLLM-compatible endpoint, the routing can change without changing the agent c
 
 ## What NosisTech Changed from the Original
 
+This is an independent educational rebuild inspired by the architecture of the referenced framework or source project. It is not affiliated with, endorsed by, or presented as a replacement for the original project.
+
 - Reduced the demo to one signature and two DSPy modules.
 - Removed the long BootstrapFewShot training set and optimizer stage.
 - Removed `python-dotenv`; the script now loads `.env` directly.
