@@ -47,7 +47,11 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-36-hallucination-detection-agent` | Claim-level hallucination review |
 | `post-37-verification-validation-agent` | Verification and validation claim gate |
 | `post-38-promptfoo-redteam-eval-agent` | Promptfoo-style redteam evaluation harness |
+| `post-39-pentestgpt-authorized-red-team-agent` | Authorized red-team scope review |
 | `post-40-gdpr-ccpa-compliance-agent` | GDPR and CCPA privacy screening |
+| `post-41-browser-use-web-task-planner` | Browser-use style web task planning |
+| `post-42-gpt-researcher` | Research planning and source trust review |
+| `post-43-goose` | Goose-style safety-gated action planning |
 
 ## Quick Start
 
