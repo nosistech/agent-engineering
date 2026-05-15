@@ -46,6 +46,7 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-35-prompt-injection-defense-agent` | Prompt injection screening |
 | `post-36-hallucination-detection-agent` | Claim-level hallucination review |
 | `post-37-verification-validation-agent` | Verification and validation claim gate |
+| `post-38-promptfoo-redteam-eval-agent` | Promptfoo-style redteam evaluation harness |
 | `post-40-gdpr-ccpa-compliance-agent` | GDPR and CCPA privacy screening |
 
 ## Quick Start
