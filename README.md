@@ -56,6 +56,7 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-45-next-agent` | SWE-agent-style next action planning |
 | `post-46-taskweaver` | TaskWeaver-style stateful data analysis |
 | `post-47-self-improving-agent` | Self-improving prompt adaptation loop |
+| `post-48-general-problem-solver` | Trust-then-escalate general problem solving |
 
 ## Quick Start
 
