@@ -54,6 +54,7 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-43-goose` | Goose-style safety-gated action planning |
 | `post-44-openhands` | OpenHands-style sandbox planning |
 | `post-45-next-agent` | SWE-agent-style next action planning |
+| `post-46-taskweaver` | TaskWeaver-style stateful data analysis |
 
 ## Quick Start
 
