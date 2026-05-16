@@ -52,6 +52,8 @@ provided, install that folder's requirements, and run `agent.py`.
 | `post-41-browser-use-web-task-planner` | Browser-use style web task planning |
 | `post-42-gpt-researcher` | Research planning and source trust review |
 | `post-43-goose` | Goose-style safety-gated action planning |
+| `post-44-openhands` | OpenHands-style sandbox planning |
+| `post-45-next-agent` | SWE-agent-style next action planning |
 
 ## Quick Start
 
